@@ -3,7 +3,7 @@ d20 board games helper bot for Telegram
 
 ## How to run
 **$** *pip3 install python-telegram-bot --upgrade --pre*
-**$** *pip2 install leveldb*  
+**$** *pip3 install leveldb*  
 **$** *touch d20potz.cfg* # and fill [bot] section with parameters: **db\_dir** and **telegram\_token**  
 **$** *python2 yachbot.py* 
 
