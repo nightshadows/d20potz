@@ -6,6 +6,7 @@ import configparser
 import leveldb
 import logging
 import optparse
+import random
 import sys
 import telegram
 
@@ -87,6 +88,9 @@ async def currentPlayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     currentPlayer = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
     await context.bot.send_message(chat_id=update.effective_chat.id, text="It is {}'s turn.".format(currentPlayer))
 
+async def roll20(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Rolling... {}".format(random.randint(1,20)))
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="d20potz ready to help")
 
@@ -107,6 +111,9 @@ def d20potzbot():
 
     currentPlayer_handler = CommandHandler('currentplayer', currentPlayer)
     application.add_handler(currentPlayer_handler)
+
+    roll20_handler = CommandHandler('roll20', roll20)
+    application.add_handler(roll20_handler)
 
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     application.add_handler(echo_handler)
