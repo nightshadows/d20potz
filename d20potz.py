@@ -2,13 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import collections
-import configparser
 import leveldb
 import logging
 import optparse
 import random
-import sys
-import telegram
 
 from telegram import Update
 from telegram.ext import filters, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler
