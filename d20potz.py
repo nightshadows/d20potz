@@ -120,7 +120,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="d20potz at your service!")
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=update.message.text)
+    await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=f"@{update.message.chat.username} what do you mean "
+                 f"\"{update.message.text}\"?")
 
 async def endTurn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     currentPlayer = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
