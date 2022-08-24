@@ -130,3 +130,8 @@ dmypy.json
 
 # MacOS shit
 .DS_Store
+
+# To not accidentally commit shit
+d20potz.cfg
+d20potzdb
+db
