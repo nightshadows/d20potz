@@ -12,10 +12,10 @@ from telegram import Update
 from telegram.ext import filters, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler
 
 D20PotzBotConfiguration = collections.namedtuple("D20PotzBotConfiguration", "db_location token cards_dir spelling order hp_defaults")
-def read_configuration(configuration_file):
+def read_configuration(secret_config, default_config):
     from configparser import ConfigParser
     cp = ConfigParser()
-    if configuration_file in cp.read([configuration_file]):
+    if secret_config in cp.read([secret_config, default_config]):
         db_location = cp.get("bot", "db_dir")
         token = cp.get("bot", "telegram_token")
         cards_dir = cp.get("bot", "cards_dir", fallback="./cards")
@@ -34,7 +34,7 @@ def read_cards(cards_dir):
                     cards[subdirname].append(filename[0:-4])
     return cards
 
-CONFIG = read_configuration("./d20potz.cfg")
+CONFIG = read_configuration("./d20potz.cfg", "./default.cfg")
 CARDS = read_cards(CONFIG.cards_dir)
 DB = leveldb.LevelDB(CONFIG.db_location)
 
