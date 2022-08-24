@@ -239,7 +239,7 @@ async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     command = update.message.text.lower().removeprefix("/cards").lstrip()
     if not command:
-        await send_to_chat(f"Usage: /cards (choose|retire|list) <card> [player]")
+        await send_to_chat(f"Usage: /cards (choose|retire|list|names) <card> [player]")
         return
 
     if command.startswith("list"):
@@ -251,6 +251,11 @@ async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await sendCards(player_name, active_cards, update.effective_chat.id, context)
         else:
             await send_to_chat(f"{player_name} does not have active cards")
+    elif command.startswith("names"):
+        command = command.removeprefix("names").lstrip()
+        player_name = command or player_name
+        await send_to_chat(f"{player_name}, choose from: " 
+                + "\n\t* ".join([ ' ' ] + sorted(CARDS[player_name.lower()])))
     elif command.startswith("choose") or command.startswith("retire"):
         make_active = command.startswith("choose")
         command = command.removeprefix("choose").removeprefix("retire").lstrip()
