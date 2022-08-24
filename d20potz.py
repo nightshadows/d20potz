@@ -268,8 +268,13 @@ async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         card, _, maybe_player = command.partition(' ')
         player_name = maybe_player or player_name
-        if card.isnumeric():
-            card = get_cards_in_order(player_name)[int(card)]
+        if card.isnumeric() or card.lstrip('-').isnumeric():
+            cards = get_cards_in_order(player_name)
+            card_idx = int(card)
+            if card_idx < 0 or card_idx >= len(cards):
+                await send_to_chat(f"You don't have that card {player_name}. Help: /cards names {player_name}")
+                return
+            card = cards[card_idx]
         setCardStatusForPlayer(
                 chat_id=update.effective_chat.id, 
                 player_id=player_name,
