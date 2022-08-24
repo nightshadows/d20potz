@@ -8,7 +8,7 @@ import optparse
 import os
 import random
 
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import filters, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler
 
 D20PotzBotConfiguration = collections.namedtuple("D20PotzBotConfiguration", "db_location token cards_dir spelling order hp_defaults")
@@ -188,6 +188,25 @@ async def hp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /hp <player> [get|set|=|add|+|sub|-] <hp>")
 
+async def getAllPlayerCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    currentPlayer = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
+    playerName = currentPlayer
+    if len(update.message.text.split()) > 2:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /getallcards <player>")
+    if len(update.message.text.split()) == 2:
+        playerName = update.message.text.split()[1]
+
+    playerCards = CARDS[playerName.lower()]
+    if len(playerCards) == 0:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="{} has no cards.".format(getSpelling(playerName)))
+    else:
+        media_list = list()
+        for playerCard in playerCards:
+            photoFilePath = os.path.join(CONFIG.cards_dir, playerName.lower(), playerCard + ".jpg")
+            media_item = InputMediaPhoto(media=open(photoFilePath, 'rb'))
+            media_list.append(media_item)
+        await context.bot.send_media_group(chat_id=update.effective_chat.id, media=media_list)
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="d20potz ready to help")
 
@@ -217,6 +236,9 @@ def d20potzbot():
 
     defaults_handler = CommandHandler('defaults', setDefaults)
     application.add_handler(defaults_handler)
+
+    getAllPlayerCards_handler = CommandHandler('getallcards', getAllPlayerCards)
+    application.add_handler(getAllPlayerCards_handler)
 
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     application.add_handler(echo_handler)
