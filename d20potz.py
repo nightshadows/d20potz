@@ -7,6 +7,7 @@ import logging
 import optparse
 import os
 import random
+from typing import List, Tuple
 
 from telegram import Update, InputMediaPhoto
 from telegram.ext import filters, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler
@@ -107,6 +108,22 @@ def setDefaultHps(chat_id):
         setPlayerHp(chat_id, player_name.lower(), hp)
         setPlayerMaxHp(chat_id, player_name.lower(), hp)
 
+def setCardStatusForPlayer(chat_id, player_id, card_id, status: bool):
+    card_key = f"card_status_{chat_id}_{player_id}_{card_id}".encode('utf-8')
+    logging.info(f"Writting card status for key {card_key}")
+    DB.Put(card_key, b'1' if status else b'0')
+
+def getActiveCardsForPlayer(chat_id, player_id):
+    key_prefix = f"card_status_{chat_id}_{player_id}_"
+    logging.info(f"Checking cards for {key_prefix}")
+    for k, v in DB.RangeIter(
+            key_from=key_prefix.encode('utf-8'), 
+            key_to=(key_prefix+'\255').encode('utf-8')
+        ):
+        logging.info(f"Checking {k}, {v}")
+        if v == b'1':
+            yield k.decode('utf-8').removeprefix(key_prefix)
+
 ###############################################################################################
 
 def error(bot, update, error):
@@ -124,7 +141,6 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id, 
             text=f"@{update.message.chat.username} what do you mean "
                  f"\"{update.message.text}\"?")
-
 async def endTurn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     currentPlayer = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
     nextPlayerId = getNextPlayerId(update.effective_chat.id)
@@ -191,6 +207,14 @@ async def hp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /hp <player> [get|set|=|add|+|sub|-] <hp>")
 
+async def sendCards(player: str, cards: List[str], chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    media_list = list()
+    for playerCard in cards:
+        photoFilePath = os.path.join(CONFIG.cards_dir, player.lower(), playerCard + ".jpg")
+        media_item = InputMediaPhoto(media=open(photoFilePath, 'rb'))
+        media_list.append(media_item)
+    await context.bot.send_media_group(chat_id=chat_id, media=media_list)
+
 async def getAllPlayerCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     currentPlayer = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
     playerName = currentPlayer
@@ -203,12 +227,48 @@ async def getAllPlayerCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(playerCards) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="{} has no cards.".format(getSpelling(playerName)))
     else:
-        media_list = list()
-        for playerCard in playerCards:
-            photoFilePath = os.path.join(CONFIG.cards_dir, playerName.lower(), playerCard + ".jpg")
-            media_item = InputMediaPhoto(media=open(photoFilePath, 'rb'))
-            media_list.append(media_item)
-        await context.bot.send_media_group(chat_id=update.effective_chat.id, media=media_list)
+        await sendCards(playerName, playerCards, update.effective_chat.id, context)
+
+async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def send_to_chat(message: str):
+        await context.bot.send_message(chat_id=update.effective_chat.id, 
+            text=message)
+
+    player_name = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
+    def parse_card_and_player(command: str) -> Tuple[str, str]:
+        card, _, player = command.partition(' ')
+        return (card, player or player_name)
+
+    command = update.message.text.lower().removeprefix("/cards").lstrip()
+    if not command:
+        await send_to_chat(f"Usage: /cards (choose|retire|list) <card> [player]")
+        return
+
+    if command.startswith("list"):
+        command = command.removeprefix("list").lstrip()
+        player_name = command or player_name
+
+        if active_cards := list(getActiveCardsForPlayer(update.effective_chat.id, player_name)):
+            await send_to_chat(f"Listing for {player_name}: {active_cards}")
+            await sendCards(player_name, active_cards, update.effective_chat.id, context)
+        else:
+            await send_to_chat(f"{player_name} does not have active cards")
+    elif command.startswith("choose") or command.startswith("retire"):
+        make_active = command.startswith("choose")
+        command = command.removeprefix("choose").removeprefix("retire").lstrip()
+        if not command:
+            await send_to_chat("Usage: /cards (choose|retire) <card> [player]")
+            return
+
+        card, player_name = parse_card_and_player(command)
+        setCardStatusForPlayer(
+                chat_id=update.effective_chat.id, 
+                player_id=player_name,
+                card_id=card, 
+                status=make_active)
+        await send_to_chat(f"{player_name} {'activated' if make_active else 'deactivated'} \"{card}\".")
+    else:
+        await send_to_chat(f"What are you trying to do by sending me \"{command}\"?")
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="d20potz ready to help")
@@ -242,6 +302,9 @@ def d20potzbot():
 
     getAllPlayerCards_handler = CommandHandler('getallcards', getAllPlayerCards)
     application.add_handler(getAllPlayerCards_handler)
+
+    cards_handler = CommandHandler('cards', processCards)
+    application.add_handler(cards_handler)
 
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     application.add_handler(echo_handler)
