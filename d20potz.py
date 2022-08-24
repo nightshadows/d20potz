@@ -115,12 +115,10 @@ def setCardStatusForPlayer(chat_id, player_id, card_id, status: bool):
 
 def getActiveCardsForPlayer(chat_id, player_id):
     key_prefix = f"card_status_{chat_id}_{player_id}_"
-    logging.info(f"Checking cards for {key_prefix}")
     for k, v in DB.RangeIter(
             key_from=key_prefix.encode('utf-8'), 
             key_to=(key_prefix+'\255').encode('utf-8')
         ):
-        logging.info(f"Checking {k}, {v}")
         if v == b'1':
             yield k.decode('utf-8').removeprefix(key_prefix)
 
