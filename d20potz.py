@@ -5,21 +5,34 @@ import collections
 import leveldb
 import logging
 import optparse
+import os
 import random
 
 from telegram import Update
 from telegram.ext import filters, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler
 
-D20PotzBotConfiguration = collections.namedtuple("D20PotzBotConfiguration", "db_location token")
+D20PotzBotConfiguration = collections.namedtuple("D20PotzBotConfiguration", "db_location token cards_dir")
 def read_configuration(configuration_file):
     from configparser import ConfigParser
     cp = ConfigParser()
     if configuration_file in cp.read([configuration_file]):
         db_location = cp.get("bot", "db_dir")
         token = cp.get("bot", "telegram_token")
-        return D20PotzBotConfiguration(db_location, token)
+        cards_dir = cp.get("bot", "cards_dir", fallback="./cards")
+        return D20PotzBotConfiguration(db_location, token, cards_dir)
+
+def read_cards(cards_dir):
+    cards = dict()
+    for subdirname in os.listdir(cards_dir):
+        if os.path.isdir(os.path.join(cards_dir, subdirname)):
+            cards[subdirname] = ()
+            for filename in os.listdir(os.path.join(cards_dir, subdirname)):
+                if filename.endswith(".JPG"):
+                    cards[subdirname].append(filename[0:-4])
+    return cards
 
 CONFIG = read_configuration("./d20potz.cfg")
+CARDS = read_cards(CONFIG.cards_dir)
 DB = leveldb.LevelDB(CONFIG.db_location)
 
 # Enable logging
@@ -179,6 +192,8 @@ def d20potzbot():
     application.add_handler(echo_handler)
     
     application.run_polling()
+
+    print(CARDS)
 
 if __name__ == "__main__":
     opt, args = ParseArgs()
