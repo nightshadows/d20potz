@@ -117,7 +117,8 @@ async def currentPlayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="It is {}'s turn.".format(currentPlayer))
 
 async def roll20(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Rolling... {}".format(random.randint(1,20)))
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Rolling... {}".format(
+            random.SystemRandom().randint(1,20)))
 
 async def hp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     currentPlayer = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
@@ -198,3 +199,4 @@ def d20potzbot():
 if __name__ == "__main__":
     opt, args = ParseArgs()
     d20potzbot()
+
