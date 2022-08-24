@@ -7,7 +7,7 @@ import logging
 import optparse
 import os
 import random
-from typing import List, Tuple
+from typing import List
 
 from telegram import Update, InputMediaPhoto
 from telegram.ext import filters, ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler
@@ -227,21 +227,20 @@ async def getAllPlayerCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await sendCards(playerName, playerCards, update.effective_chat.id, context)
 
+def get_cards_in_order(player: str):
+    return sorted(CARDS[player])
+
 async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async def send_to_chat(message: str):
         await context.bot.send_message(chat_id=update.effective_chat.id, 
             text=message)
 
-    player_name = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
-    def parse_card_and_player(command: str) -> Tuple[str, str]:
-        card, _, player = command.partition(' ')
-        return (card, player or player_name)
-
     command = update.message.text.lower().removeprefix("/cards").lstrip()
     if not command:
-        await send_to_chat(f"Usage: /cards (choose|retire|list|names) <card> [player]")
+        await send_to_chat(f"Usage: /cards (choose|retire|list|names) <card|card_index> [player]")
         return
 
+    player_name = getPlayerById(update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
     if command.startswith("list"):
         command = command.removeprefix("list").lstrip()
         player_name = command or player_name
@@ -255,15 +254,21 @@ async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         command = command.removeprefix("names").lstrip()
         player_name = command or player_name
         await send_to_chat(f"{player_name}, choose from: " 
-                + "\n\t* ".join([ ' ' ] + sorted(CARDS[player_name.lower()])))
+                + "\n\t* ".join([ ' ' ] + 
+                    [f"{idx}: {name}" for idx, name 
+                        in enumerate(get_cards_in_order(player_name))])
+            )
     elif command.startswith("choose") or command.startswith("retire"):
         make_active = command.startswith("choose")
         command = command.removeprefix("choose").removeprefix("retire").lstrip()
         if not command:
-            await send_to_chat("Usage: /cards (choose|retire) <card> [player]")
+            await send_to_chat("Usage: /cards (choose|retire) <card|card_index> [player]")
             return
 
-        card, player_name = parse_card_and_player(command)
+        card, _, maybe_player = command.partition(' ')
+        player_name = maybe_player or player_name
+        if card.isnumeric():
+            card = get_cards_in_order(player_name)[int(card)]
         setCardStatusForPlayer(
                 chat_id=update.effective_chat.id, 
                 player_id=player_name,
