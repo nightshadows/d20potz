@@ -6,7 +6,6 @@ import leveldb
 import logging
 import optparse
 import os
-import random
 from typing import List
 
 from telegram import Update, InputMediaPhoto
@@ -17,6 +16,8 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
 )
+
+from potz import roll20
 
 D20PotzBotConfiguration = collections.namedtuple(
     "D20PotzBotConfiguration", "db_location token cards_dir spelling order hp_defaults"
@@ -227,13 +228,6 @@ async def currentPlayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def roll20(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Rolling... {}".format(random.SystemRandom().randint(1, 20)),
-    )
-
-
 async def hp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     currentPlayer = getPlayerById(
         update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
@@ -439,7 +433,7 @@ def d20potzbot():
     currentPlayer_handler = CommandHandler("currentplayer", currentPlayer)
     application.add_handler(currentPlayer_handler)
 
-    roll20_handler = CommandHandler("roll20", roll20)
+    roll20_handler = CommandHandler("roll20", roll20.roll20)
     application.add_handler(roll20_handler)
 
     hp_handler = CommandHandler("hp", hp)
