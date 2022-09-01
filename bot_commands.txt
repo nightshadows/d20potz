@@ -1,0 +1,9 @@
+help - Useless help
+endturn - Pass the turn to the next hero
+setplayerlist - Set the hero list and turn order
+currentplayer - Print the current hero nane
+roll20 - Roll the die
+hp - Show HitPoints
+getallcards - Show all cards
+cards - Select or show cards
+defaults - Reset everything to their default values
