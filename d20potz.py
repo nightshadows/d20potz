@@ -6,12 +6,14 @@ import leveldb
 import logging
 import optparse
 import os
+
 from typing import List
 
-from telegram import Update, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
     filters,
     ApplicationBuilder,
+    CallbackQueryHandler,
     ContextTypes,
     CommandHandler,
     MessageHandler,
@@ -409,6 +411,29 @@ async def processCards(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_to_chat(f'What are you trying to do by sending me "{command}"?')
 
 
+async def keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [
+            InlineKeyboardButton("HP", callback_data="hp"),
+        ],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Choose:", reply_markup=reply_markup)
+
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    currentPlayer = getPlayerById(
+        update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
+    )
+    hp = getPlayerHp(update.effective_chat.id, currentPlayer)
+
+    query = update.callback_query
+    await query.answer()
+    if query.data == "hp":
+        await query.message.edit_text(f"{getSpelling(currentPlayer)} has {hp} HP.")
+
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id, text="d20potz ready to help"
@@ -448,8 +473,11 @@ def d20potzbot():
     cards_handler = CommandHandler("cards", processCards)
     application.add_handler(cards_handler)
 
-    echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
-    application.add_handler(echo_handler)
+    callback_handler = CallbackQueryHandler(button)
+    application.add_handler(callback_handler)
+
+    keyboard_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), keyboard)
+    application.add_handler(keyboard_handler)
 
     application.run_polling()
 
