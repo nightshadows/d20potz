@@ -327,9 +327,9 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    player_name = params[1].lower()
+    player_name, sub_command = params[:2]
     player_list = CONFIG.order.lower().split()
-    if (player_name not in player_list):
+    if player_name not in player_list:
         await context.bot.send_message(
             chat_id=chat_id, text="{} is not one of {}".format(
                 player_name, player_list)
@@ -339,7 +339,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sub_command = params[2]
     if sub_command == "all":
         player_cards = CARDS[player_name]
-        if len(player_cards) == 0:
+        if not player_cards:
             await context.bot.send_message(
                 chat_id=chat_id,
                 text="{} has no cards.".format(getSpelling(player_name)),
