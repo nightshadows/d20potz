@@ -307,7 +307,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
 
-    if len(params) < 3:
+    if len(params) < 2:
         await context.bot.send_message(
             chat_id=chat_id, text="Usage: /cards <player> <subcommand>"
         )
@@ -322,7 +322,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    sub_command = params[2]
+    sub_command = "hand" if len(params) == 2 else params[2]
     if sub_command == "all":
         player_cards = CARDS[player_name]
         if not player_cards:
@@ -509,11 +509,11 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id, text="list of commands \n" +
         "/roll20 - roll a d20 \n" +
+        "/cards <player> - list cards in player hand \n" +
         "/cards <player> all - show all player cards with images \n" +
         "/cards <player> show <card name> - show image of a single card \n" +
         "/cards <player> draw <card name>,<card name>... - add card[s] to player hand \n" +
         "/cards <player> discard <card name> - remove card from player hand \n" +
-        "/cards <player> hand - list cards in player hand \n" +
         "/cards <player> flip <card name> - use card from player hand \n" +
         "/cards <player> unflip <card name> - make card from player hand usable again \n"
     )
