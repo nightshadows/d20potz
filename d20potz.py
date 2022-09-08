@@ -64,6 +64,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
+def ParseArgs():
+    parser = optparse.OptionParser()
+    return parser.parse_args()
+
 ###############################################################################################
 
 
@@ -148,46 +153,48 @@ def setDefaultHps(chat_id):
         setPlayerMaxHp(chat_id, player_name.lower(), hp)
 
 
-def setCardStatusForPlayer(chat_id, player_id, card_id, status: bool):
+def setPlayerCardStatus(chat_id, player_id, card_id, flipped: bool):
     card_key = f"card_status_{chat_id}_{player_id}_{card_id}".encode("utf-8")
-    logging.info(f"Writting card status for key {card_key}")
-    DB.Put(card_key, b"1" if status else b"0")
+    logging.info(f"Writing card status for key {card_key}")
+    DB.Put(card_key, b"1" if flipped else b"0")
 
 
-def getActiveCardsForPlayer(chat_id, player_id):
+def removePlayerCardStatus(chat_id, player_id, card_id):
+    card_key = f"card_status_{chat_id}_{player_id}_{card_id}".encode("utf-8")
+    DB.Delete(card_key)
+
+
+def getPlayerCards(chat_id, player_id, flipped: bool):
     key_prefix = f"card_status_{chat_id}_{player_id}_"
     for k, v in DB.RangeIter(
         key_from=key_prefix.encode("utf-8"),
         key_to=(key_prefix + "\255").encode("utf-8"),
     ):
-        if v == b"1":
+        if flipped is None or (flipped and v == b"1") or (not flipped and v == b"0"):
             yield k.decode("utf-8").removeprefix(key_prefix)
 
 
+async def setDefaults(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    setDefaultPlayerOrder(update.effective_chat.id)
+    setDefaultHps(update.effective_chat.id)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id, text="Defaults set."
+    )
+
+
+async def send_cards(
+    player: str, cards: List[str], chat_id: int, context: ContextTypes.DEFAULT_TYPE
+):
+    media_list = list()
+    for playerCard in cards:
+        photoFilePath = os.path.join(
+            CONFIG.cards_dir, player.lower(), playerCard + ".jpg"
+        )
+        media_item = InputMediaPhoto(media=open(photoFilePath, "rb"))
+        media_list.append(media_item)
+    await context.bot.send_media_group(chat_id=chat_id, media=media_list)
+
 ###############################################################################################
-
-
-def error(bot, update, error):
-    logger.warning('Update "%s" caused error "%s"' % (update, error))
-
-
-def ParseArgs():
-    parser = optparse.OptionParser()
-    return parser.parse_args()
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id, text="d20potz at your service!"
-    )
-
-
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"@{update.message.chat.username} what do you mean "
-        f'"{update.message.text}"?',
-    )
 
 
 async def endTurn(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,15 +220,7 @@ async def setPlayerList(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def setDefaults(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    setDefaultPlayerOrder(update.effective_chat.id)
-    setDefaultHps(update.effective_chat.id)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id, text="Defaults set."
-    )
-
-
-async def current_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def getCurrentPlayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_player = getPlayerById(
         update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
     )
@@ -304,30 +303,17 @@ async def hp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def sendCards(
-    player: str, cards: List[str], chat_id: int, context: ContextTypes.DEFAULT_TYPE
-):
-    media_list = list()
-    for playerCard in cards:
-        photoFilePath = os.path.join(
-            CONFIG.cards_dir, player.lower(), playerCard + ".jpg"
-        )
-        media_item = InputMediaPhoto(media=open(photoFilePath, "rb"))
-        media_list.append(media_item)
-    await context.bot.send_media_group(chat_id=chat_id, media=media_list)
-
-
 async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
 
-    if len(params) < 3:
+    if len(params) < 2:
         await context.bot.send_message(
             chat_id=chat_id, text="Usage: /cards <player> <subcommand>"
         )
         return
 
-    player_name, sub_command = params[:2]
+    player_name = params[1]
     player_list = CONFIG.order.lower().split()
     if player_name not in player_list:
         await context.bot.send_message(
@@ -336,7 +322,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    sub_command = params[2]
+    sub_command = "hand" if len(params) == 2 else params[2]
     if sub_command == "all":
         player_cards = CARDS[player_name]
         if not player_cards:
@@ -345,7 +331,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="{} has no cards.".format(getSpelling(player_name)),
             )
         else:
-            await sendCards(player_name, player_cards, chat_id, context)
+            await send_cards(player_name, player_cards, chat_id, context)
         return
     elif sub_command == "show":
         if len(params) < 3:
@@ -355,40 +341,127 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         card_name = params[3]
-        player_cards = list(filter(lambda card: card.find(card_name) != -1, CARDS[player_name]))
+        player_cards = [c for c in CARDS[player_name] if card_name in c]
         if len(player_cards) == 0:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} Could not find in {}".format(card_name, CARDS[player_name]),
+                text="{} Could not find in {}".format(
+                    card_name, CARDS[player_name]),
             )
         else:
-            await sendCards(player_name, player_cards, chat_id, context)
+            await send_cards(player_name, player_cards, chat_id, context)
         return
     elif sub_command == "draw":
-        #TODO
+        if len(params) < 3:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Usage: /cards <player> draw <card name>"
+            )
+            return
+
+        card_name = params[3]
+        player_cards = player_cards = [
+            c for c in CARDS[player_name] if card_name in c]
+        if len(player_cards) == 0:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} Could not find in {}".format(
+                    card_name, CARDS[player_name]),
+            )
+        setPlayerCardStatus(chat_id, player_name,
+                            player_cards[0], flipped=False)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="{} drew {}".format(
+                player_name, player_cards[0]),
+        )
         return
     elif sub_command == "discard":
-        #TODO
+        if len(params) < 3:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Usage: /cards <player> flip <card name>"
+            )
+            return
+
+        card_name = params[3]
+        all_cards = list(getPlayerCards(
+            update.effective_chat.id, player_name, flipped=None))
+        discarded_cards = [c for c in all_cards if card_name in c]
+
+        list(filter(lambda card: card.find(
+            card_name) != -1, all_cards))
+        if len(discarded_cards) != 1:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Could not find {} in {}'s hand {}".format(
+                    card_name, player_name, all_cards),
+            )
+            return
+        removePlayerCardStatus(chat_id, player_name, discarded_cards[0])
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="{} discarded {}".format(
+                player_name, discarded_cards[0]),
+        )
         return
     elif sub_command == "hand":
-        #TODO
+        active_cards = list(
+            getPlayerCards(update.effective_chat.id,
+                           player_name, flipped=False)
+        )
+        await send_cards(player_name, active_cards, chat_id, context)
+        flipped_cards = list(
+            getPlayerCards(update.effective_chat.id, player_name, flipped=True)
+        )
+        await context.bot.send_message(
+            chat_id=chat_id, text="{}'s flipped cards {}".format(
+                player_name, flipped_cards)
+        )
         return
     elif sub_command == "flip":
-        #TODO
-        return
-    elif sub_command == "unflip":
-        #TODO
+        if len(params) < 3:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Usage: /cards <player> flip <card name>"
+            )
+            return
+
+        card_name = params[3]
+        not_flipped_cards = [c for c in getPlayerCards(update.effective_chat.id,
+                                                       player_name, flipped=False) if card_name in c]
+        flipped_cards = [c for c in getPlayerCards(update.effective_chat.id,
+                                                   player_name, flipped=True) if card_name in c]
+        if len(not_flipped_cards) == 0 and len(flipped_cards) == 0:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Could not find {} in {}'s hand {}".format(
+                    card_name, player_name, list(getPlayerCards(update.effective_chat.id,
+                                                                player_name, flipped=None))),
+            )
+            return
+
+        if len(not_flipped_cards) > 0:
+            setPlayerCardStatus(chat_id, player_name,
+                                not_flipped_cards[0], flipped=True)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} flipped {}".format(
+                    player_name, not_flipped_cards[0]),
+            )
+        else:
+            setPlayerCardStatus(chat_id, player_name,
+                                flipped_cards[0], flipped=False)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} unflipped {}".format(
+                    player_name, flipped_cards[0]),
+            )
         return
     else:
         await context.bot.send_message(
             chat_id=chat_id, text="{} is not one of {}".format(sub_command, ["all", "show", "draw",
-                                                                             "discard", "hand", "flip", "unflip"])
+                                                                             "discard", "hand", "flip"])
         )
         return
 
-
-def get_cards_in_order(player: str):
-    return sorted(CARDS[player])
 
 async def keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
@@ -417,21 +490,17 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id, text="list of commands \n" +
         "/roll20 - roll a d20 \n" +
+        "/cards <player> - list cards in player hand \n" +
         "/cards <player> all - show all player cards with images \n" +
         "/cards <player> show <card name> - show image of a single card \n" +
-        "/cards <player> draw <card name>,<card name>... - add card[s] to player hand \n" +
+        "/cards <player> draw <card name>... - add card to player hand \n" +
         "/cards <player> discard <card name> - remove card from player hand \n" +
-        "/cards <player> hand - list cards in player hand \n" +
-        "/cards <player> flip <card name> - use card from player hand \n" +
-        "/cards <player> unflip <card name> - make card from player hand usable again \n"
+        "/cards <player> flip <card name> - turn card from player hand \n"
     )
 
 
 def d20potzbot():
     application = ApplicationBuilder().token(CONFIG.token).build()
-
-    start_handler = CommandHandler("start", start)
-    application.add_handler(start_handler)
 
     help_handler = CommandHandler("help", help)
     application.add_handler(help_handler)
@@ -442,7 +511,7 @@ def d20potzbot():
     setPlayerList_handler = CommandHandler("setplayerlist", setPlayerList)
     application.add_handler(setPlayerList_handler)
 
-    currentPlayer_handler = CommandHandler("currentplayer", current_player)
+    currentPlayer_handler = CommandHandler("currentplayer", getCurrentPlayer)
     application.add_handler(currentPlayer_handler)
 
     roll20_handler = CommandHandler("roll20", roll20.roll20)
