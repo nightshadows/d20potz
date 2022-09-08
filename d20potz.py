@@ -11,12 +11,9 @@ from typing import List
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
-    filters,
     ApplicationBuilder,
-    CallbackQueryHandler,
     ContextTypes,
     CommandHandler,
-    MessageHandler,
 )
 
 from potz import roll20
@@ -93,7 +90,7 @@ def getNextPlayerId(chat_id):
     return next_player_id
 
 
-def setCurrentPlayerId(chat_id, player_id):
+def setCurrentPlayerId(chat_id, player_id: int):
     current_player_id_key = "current_player_{}".format(chat_id).encode("utf-8")
     DB.Put(current_player_id_key, str(player_id).encode("utf-8"))
 
@@ -143,16 +140,6 @@ def setPlayerOrder(chat_id, player_list):
     setCurrentPlayerId(chat_id, 0)
 
 
-def setDefaultPlayerOrder(chat_id):
-    setPlayerOrder(chat_id, CONFIG.order.lower().split())
-
-
-def setDefaultHps(chat_id):
-    for player_name, hp in CONFIG.hp_defaults:
-        setPlayerHp(chat_id, player_name.lower(), hp)
-        setPlayerMaxHp(chat_id, player_name.lower(), hp)
-
-
 def setPlayerCardStatus(chat_id, player_id, card_id, flipped: bool):
     card_key = f"card_status_{chat_id}_{player_id}_{card_id}".encode("utf-8")
     logging.info(f"Writing card status for key {card_key}")
@@ -174,14 +161,6 @@ def getPlayerCards(chat_id, player_id, flipped: bool):
             yield k.decode("utf-8").removeprefix(key_prefix)
 
 
-async def setDefaults(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    setDefaultPlayerOrder(update.effective_chat.id)
-    setDefaultHps(update.effective_chat.id)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id, text="Defaults set."
-    )
-
-
 async def send_cards(
     player: str, cards: List[str], chat_id: int, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -197,37 +176,46 @@ async def send_cards(
 ###############################################################################################
 
 
-async def endTurn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    current_player = getPlayerById(
-        update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
-    )
-    nextPlayerId = getNextPlayerId(update.effective_chat.id)
-    setCurrentPlayerId(update.effective_chat.id, nextPlayerId)
-    nextPlayer = getPlayerById(update.effective_chat.id, nextPlayerId)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="{}'s turn ended. It is now {}'s turn.".format(
-            getSpelling(current_player), getSpelling(nextPlayer)
-        ),
-    )
-
-
-async def setPlayerList(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    setPlayerOrder(update.effective_chat.id,
-                   update.message.text.lower().split()[1:])
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id, text="Player list set."
-    )
-
-
-async def getCurrentPlayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    current_player = getPlayerById(
-        update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
-    )
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="It is {}'s turn.".format(getSpelling(current_player)),
-    )
+async def turnCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    params = update.message.text.split()
+    chat_id = update.effective_chat.id
+    sub_command = "get" if len(params) == 1 else params[1]
+    if sub_command == "get":
+        current_player = getPlayerById(
+            update.effective_chat.id, getCurrentPlayerId(
+                update.effective_chat.id)
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="It is {}'s turn.".format(getSpelling(current_player)),
+        )
+    elif sub_command == "set":
+        players = update.message.text.lower().split()[2:]
+        full_player_list = CONFIG.order.lower().split()
+        players_filtered = [c for c in players if c in full_player_list]
+        setPlayerOrder(update.effective_chat.id, players)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text="Player list is set to {}.".format(
+                players_filtered
+            ),
+        )
+    elif sub_command == "next":
+        current_player = getPlayerById(
+            update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id))
+        nextPlayerId = getNextPlayerId(update.effective_chat.id)
+        setCurrentPlayerId(update.effective_chat.id, nextPlayerId)
+        nextPlayer = getPlayerById(update.effective_chat.id, nextPlayerId)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="{}'s turn ended. It is now {}'s turn.".format(
+                getSpelling(current_player), getSpelling(nextPlayer)
+            ),
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=chat_id, text="{} is not one of {}".format(sub_command, ["get", "set",
+                                                                             "next"])
+        )
 
 
 async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,8 +230,8 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    subcommand = "get" if len(params) == 2 else params[2]
-    if subcommand == "get":
+    sub_command = "get" if len(params) == 2 else params[2]
+    if sub_command == "get":
         try:
             hp = getPlayerHp(update.effective_chat.id, player_name)
         except:
@@ -255,7 +243,7 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text="{} has {} HP.".format(getSpelling(player_name), hp),
         )
-    elif subcommand == "set" or subcommand == "=":
+    elif sub_command == "set" or sub_command == "=":
         hp = int(params[3])
         setPlayerHp(update.effective_chat.id, player_name, hp)
         setPlayerMaxHp(update.effective_chat.id, player_name, hp)
@@ -264,7 +252,7 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="{}'s HP set to {}.".format(getSpelling(player_name), hp),
         )
 
-    elif subcommand == "add" or subcommand == "+":
+    elif sub_command == "add" or sub_command == "+":
         hp = int(params[3])
         try:
             max_hp = getPlayerMaxHp(update.effective_chat.id, player_name)
@@ -281,7 +269,7 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="{}'s HP set to {}.".format(
                 getSpelling(player_name), newHp),
         )
-    elif subcommand == "sub" or subcommand == "-":
+    elif sub_command == "sub" or sub_command == "-":
         hp = int(params[3])
         try:
             newHp = max(getPlayerHp(
@@ -311,7 +299,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(params) < 2:
         await context.bot.send_message(
-            chat_id=chat_id, text="Usage: /cards <player> <subcommand>"
+            chat_id=chat_id, text="Usage: /cards <player> <sub_command>"
         )
         return
 
@@ -465,29 +453,6 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-async def keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [
-        [
-            InlineKeyboardButton("HP", callback_data="hp"),
-        ],
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Choose:", reply_markup=reply_markup)
-
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    current_player = getPlayerById(
-        update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
-    )
-    hp = getPlayerHp(update.effective_chat.id, current_player)
-
-    query = update.callback_query
-    await query.answer()
-    if query.data == "hp":
-        await query.message.edit_text(f"{getSpelling(current_player)} has {hp} HP.")
-
-
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id, text="list of commands \n" +
@@ -501,7 +466,10 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/hp <player> - show player hit points \n" +
         "/hp <player> = X - set player hit points to X \n" +
         "/hp <player> + X - increase player hit points by X \n" +
-        "/hp <player> - X - decrease player hit points by X \n"
+        "/hp <player> - X - decrease player hit points by X \n" +
+        "/turn - show current turn \n" +
+        "/turn set <player1>,<player2>... - set order of players \n" +
+        "/turn next - advance to next player \n"
     )
 
 
@@ -511,33 +479,17 @@ def d20potzbot():
     help_handler = CommandHandler("help", help)
     application.add_handler(help_handler)
 
-    endTurn_handler = CommandHandler("endturn", endTurn)
-    application.add_handler(endTurn_handler)
-
-    setPlayerList_handler = CommandHandler("setplayerlist", setPlayerList)
-    application.add_handler(setPlayerList_handler)
-
-    currentPlayer_handler = CommandHandler("currentplayer", getCurrentPlayer)
-    application.add_handler(currentPlayer_handler)
-
     roll20_handler = CommandHandler("roll20", roll20.roll20)
     application.add_handler(roll20_handler)
+
+    turn_handler = CommandHandler("turn", turnCommand)
+    application.add_handler(turn_handler)
 
     hp_handler = CommandHandler("hp", hpCommand)
     application.add_handler(hp_handler)
 
-    defaults_handler = CommandHandler("defaults", setDefaults)
-    application.add_handler(defaults_handler)
-
     cards_handler = CommandHandler("cards", cardsCommand)
     application.add_handler(cards_handler)
-
-    callback_handler = CallbackQueryHandler(button)
-    application.add_handler(callback_handler)
-
-    keyboard_handler = MessageHandler(
-        filters.TEXT & (~filters.COMMAND), keyboard)
-    application.add_handler(keyboard_handler)
 
     application.run_polling()
 
