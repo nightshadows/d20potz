@@ -230,76 +230,78 @@ async def getCurrentPlayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def hp(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    current_player = getPlayerById(
-        update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
-    )
-    playerName = current_player
-    subcommand = "get"
-    if len(update.message.text.split()) > 1:
-        playerName = update.message.text.split()[1]
-    if len(update.message.text.split()) > 2:
-        subcommand = update.message.text.split()[2]
+async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    params = update.message.text.split()
+    chat_id = update.effective_chat.id
+    player_name = params[1]
+    player_list = CONFIG.order.lower().split()
+    if player_name not in player_list:
+        await context.bot.send_message(
+            chat_id=chat_id, text="{} is not one of {}".format(
+                player_name, player_list)
+        )
+        return
+
+    subcommand = "get" if len(params) == 2 else params[2]
     if subcommand == "get":
         try:
-            hp = getPlayerHp(update.effective_chat.id, playerName)
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="{} has {} HP.".format(getSpelling(playerName), hp),
-            )
+            hp = getPlayerHp(update.effective_chat.id, player_name)
         except:
             await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="{} does not exist.".format(playerName),
-            )
+                chat_id=chat_id,
+                text="{} does not have hp set.".format(player_name))
+            return
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="{} has {} HP.".format(getSpelling(player_name), hp),
+        )
     elif subcommand == "set" or subcommand == "=":
-        if len(update.message.text.split()) > 3:
-            hp = int(update.message.text.split()[3])
-            setPlayerHp(update.effective_chat.id, playerName, hp)
-            setPlayerMaxHp(update.effective_chat.id, playerName, hp)
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="{}'s HP set to {}.".format(getSpelling(playerName), hp),
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id, text="Usage: /hp <player> = <hp>"
-            )
+        hp = int(params[3])
+        setPlayerHp(update.effective_chat.id, player_name, hp)
+        setPlayerMaxHp(update.effective_chat.id, player_name, hp)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="{}'s HP set to {}.".format(getSpelling(player_name), hp),
+        )
+
     elif subcommand == "add" or subcommand == "+":
-        if len(update.message.text.split()) > 3:
-            hp = int(update.message.text.split()[3])
-            max_hp = getPlayerMaxHp(update.effective_chat.id, playerName)
-            newHp = min(getPlayerHp(
-                update.effective_chat.id, playerName) + hp, max_hp)
-            setPlayerHp(update.effective_chat.id, playerName, newHp)
+        hp = int(params[3])
+        try:
+            max_hp = getPlayerMaxHp(update.effective_chat.id, player_name)
+        except:
             await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="{}'s HP set to {}.".format(
-                    getSpelling(playerName), newHp),
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id, text="Usage: /hp <player> + <hp>"
-            )
+                chat_id=chat_id,
+                text="{} does not have hp set.".format(player_name))
+            return
+        newHp = min(getPlayerHp(
+            update.effective_chat.id, player_name) + hp, max_hp)
+        setPlayerHp(update.effective_chat.id, player_name, newHp)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="{}'s HP set to {}.".format(
+                getSpelling(player_name), newHp),
+        )
     elif subcommand == "sub" or subcommand == "-":
-        if len(update.message.text.split()) > 3:
-            hp = int(update.message.text.split()[3])
+        hp = int(params[3])
+        try:
             newHp = max(getPlayerHp(
-                update.effective_chat.id, playerName) - hp, 0)
-            setPlayerHp(update.effective_chat.id, playerName, newHp)
+                update.effective_chat.id, player_name) - hp, 0)
+        except:
             await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="{}'s HP set to {}.".format(
-                    getSpelling(playerName), newHp),
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id, text="Usage: /hp <player> - <hp>"
-            )
+                chat_id=chat_id,
+                text="{} does not have hp set.".format(player_name))
+            return
+        setPlayerHp(update.effective_chat.id, player_name, newHp)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="{}'s HP set to {}.".format(
+                getSpelling(player_name), newHp),
+        )
+
     else:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Usage: /hp <player> [get|set|=|add|+|sub|-] <hp>",
+            text="Usage: /hp <player> [+|-] <hp>",
         )
 
 
@@ -495,7 +497,11 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/cards <player> show <card name> - show image of a single card \n" +
         "/cards <player> draw <card name>... - add card to player hand \n" +
         "/cards <player> discard <card name> - remove card from player hand \n" +
-        "/cards <player> flip <card name> - turn card from player hand \n"
+        "/cards <player> flip <card name> - turn card from player hand \n" +
+        "/hp <player> - show player hit points \n" +
+        "/hp <player> = X - set player hit points to X \n" +
+        "/hp <player> + X - increase player hit points by X \n" +
+        "/hp <player> - X - decrease player hit points by X \n"
     )
 
 
@@ -517,7 +523,7 @@ def d20potzbot():
     roll20_handler = CommandHandler("roll20", roll20.roll20)
     application.add_handler(roll20_handler)
 
-    hp_handler = CommandHandler("hp", hp)
+    hp_handler = CommandHandler("hp", hpCommand)
     application.add_handler(hp_handler)
 
     defaults_handler = CommandHandler("defaults", setDefaults)
