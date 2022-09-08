@@ -303,7 +303,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    player_name = params[1]
+    player_name = params[1].lower()
     player_list = CONFIG.order.lower().split()
     if player_name not in player_list:
         await context.bot.send_message(
@@ -394,18 +394,24 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     elif sub_command == "hand":
-        active_cards = list(
-            getPlayerCards(update.effective_chat.id,
-                           player_name, flipped=False)
-        )
-        await send_cards(player_name, active_cards, chat_id, context)
-        flipped_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, flipped=True)
-        )
-        await context.bot.send_message(
-            chat_id=chat_id, text="{}'s flipped cards {}".format(
-                player_name, flipped_cards)
-        )
+        try:
+            active_cards = list(
+                getPlayerCards(update.effective_chat.id,
+                            player_name, flipped=False)
+            )
+            await send_cards(player_name, active_cards, chat_id, context)
+            flipped_cards = list(
+                getPlayerCards(update.effective_chat.id, player_name, flipped=True)
+            )
+            await context.bot.send_message(
+                chat_id=chat_id, text="{}'s flipped cards {}".format(
+                    player_name, flipped_cards)
+            )
+        except:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} has no cards.".format(getSpelling(player_name)),
+            )
         return
     elif sub_command == "flip":
         if len(params) < 3:
