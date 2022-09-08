@@ -170,7 +170,7 @@ def getPlayerCards(chat_id, player_id, flipped: bool):
         key_from=key_prefix.encode("utf-8"),
         key_to=(key_prefix + "\255").encode("utf-8"),
     ):
-        if (flipped and v == b"1") or (not flipped and v == b"0"):
+        if flipped is None or (flipped and v == b"1") or (not flipped and v == b"0"):
             yield k.decode("utf-8").removeprefix(key_prefix)
 
 
@@ -182,7 +182,7 @@ async def setDefaults(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def sendCards(
+async def send_cards(
     player: str, cards: List[str], chat_id: int, context: ContextTypes.DEFAULT_TYPE
 ):
     media_list = list()
@@ -331,7 +331,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="{} has no cards.".format(getSpelling(player_name)),
             )
         else:
-            await sendCards(player_name, player_cards, chat_id, context)
+            await send_cards(player_name, player_cards, chat_id, context)
         return
     elif sub_command == "show":
         if len(params) < 3:
@@ -341,8 +341,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         card_name = params[3]
-        player_cards = list(filter(lambda card: card.find(
-            card_name) != -1, CARDS[player_name]))
+        player_cards = [c for c in CARDS[player_name] if card_name in c]
         if len(player_cards) == 0:
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -350,7 +349,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     card_name, CARDS[player_name]),
             )
         else:
-            await sendCards(player_name, player_cards, chat_id, context)
+            await send_cards(player_name, player_cards, chat_id, context)
         return
     elif sub_command == "draw":
         if len(params) < 3:
@@ -360,8 +359,8 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         card_name = params[3]
-        player_cards = list(filter(lambda card: card.find(
-            card_name) != -1, CARDS[player_name]))
+        player_cards = player_cards = [
+            c for c in CARDS[player_name] if card_name in c]
         if len(player_cards) == 0:
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -369,7 +368,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     card_name, CARDS[player_name]),
             )
         setPlayerCardStatus(chat_id, player_name,
-                            player_cards[0], False)
+                            player_cards[0], flipped=False)
         await context.bot.send_message(
             chat_id=chat_id,
             text="{} drew {}".format(
@@ -384,19 +383,16 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         card_name = params[3]
-        active_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, False)
-        )
-        flipped_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, True)
-        )
-        all_cards = active_cards + flipped_cards
-        discarded_cards = list(filter(lambda card: card.find(
+        all_cards = list(getPlayerCards(
+            update.effective_chat.id, player_name, flipped=None))
+        discarded_cards = [c for c in all_cards if card_name in c]
+
+        list(filter(lambda card: card.find(
             card_name) != -1, all_cards))
-        if len(discarded_cards) == 0:
+        if len(discarded_cards) != 1:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} Could not find in {}'s hand {}".format(
+                text="Could not find {} in {}'s hand {}".format(
                     card_name, player_name, all_cards),
             )
             return
@@ -409,11 +405,12 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif sub_command == "hand":
         active_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, False)
+            getPlayerCards(update.effective_chat.id,
+                           player_name, flipped=False)
         )
-        await sendCards(player_name, active_cards, chat_id, context)
+        await send_cards(player_name, active_cards, chat_id, context)
         flipped_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, True)
+            getPlayerCards(update.effective_chat.id, player_name, flipped=True)
         )
         await context.bot.send_message(
             chat_id=chat_id, text="{}'s flipped cards {}".format(
@@ -428,56 +425,40 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         card_name = params[3]
-        active_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, False)
-        )
-        flipped_cards = list(filter(lambda card: card.find(
-            card_name) != -1, active_cards))
-        if len(flipped_cards) == 0:
+        not_flipped_cards = [c for c in getPlayerCards(update.effective_chat.id,
+                                                       player_name, flipped=False) if card_name in c]
+        flipped_cards = [c for c in getPlayerCards(update.effective_chat.id,
+                                                   player_name, flipped=True) if card_name in c]
+        if len(not_flipped_cards) == 0 and len(flipped_cards) == 0:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} Could not find in {}'s hand {}".format(
-                    card_name, player_name, active_cards),
-            )
-            return
-        setPlayerCardStatus(chat_id, player_name,
-                            flipped_cards[0], True)
-        await context.bot.send_message(
-            chat_id=chat_id, text="{} flipped card {}".format(
-                player_name, flipped_cards[0])
-        )
-        return
-    elif sub_command == "unflip":
-        if len(params) < 3:
-            await context.bot.send_message(
-                chat_id=chat_id, text="Usage: /cards <player> unflip <card name>"
+                text="Could not find {} in {}'s hand {}".format(
+                    card_name, player_name, list(getPlayerCards(update.effective_chat.id,
+                                                                player_name, flipped=None))),
             )
             return
 
-        card_name = params[3]
-        flipped_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, True)
-        )
-        unflipped_cards = list(filter(lambda card: card.find(
-            card_name) != -1, flipped_cards))
-        if len(unflipped_cards) == 0:
+        if len(not_flipped_cards) > 0:
+            setPlayerCardStatus(chat_id, player_name,
+                                not_flipped_cards[0], flipped=True)
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} Could not find in {}'s flipped hand {}".format(
-                    card_name, player_name, flipped_cards),
+                text="{} flipped {}".format(
+                    player_name, not_flipped_cards[0]),
             )
-            return
-        setPlayerCardStatus(chat_id, player_name,
-                            flipped_cards[0], False)
-        await context.bot.send_message(
-            chat_id=chat_id, text="{} unflipped card {}".format(
-                player_name, flipped_cards[0])
-        )
+        else:
+            setPlayerCardStatus(chat_id, player_name,
+                                flipped_cards[0], flipped=False)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} unflipped {}".format(
+                    player_name, flipped_cards[0]),
+            )
         return
     else:
         await context.bot.send_message(
             chat_id=chat_id, text="{} is not one of {}".format(sub_command, ["all", "show", "draw",
-                                                                             "discard", "hand", "flip", "unflip"])
+                                                                             "discard", "hand", "flip"])
         )
         return
 
@@ -512,10 +493,9 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/cards <player> - list cards in player hand \n" +
         "/cards <player> all - show all player cards with images \n" +
         "/cards <player> show <card name> - show image of a single card \n" +
-        "/cards <player> draw <card name>,<card name>... - add card[s] to player hand \n" +
+        "/cards <player> draw <card name>... - add card to player hand \n" +
         "/cards <player> discard <card name> - remove card from player hand \n" +
-        "/cards <player> flip <card name> - use card from player hand \n" +
-        "/cards <player> unflip <card name> - make card from player hand usable again \n"
+        "/cards <player> flip <card name> - turn card from player hand \n"
     )
 
 
