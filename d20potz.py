@@ -459,6 +459,7 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -497,6 +498,34 @@ def d20potzbot():
 
     cards_handler = CommandHandler("cards", cards_command)
     application.add_handler(cards_handler)
+
+    async def error(update, context):
+        import traceback
+        import html
+        import json
+
+        from telegram.constants import ParseMode
+
+        tb_list = traceback.format_exception(
+            None, context.error, context.error.__traceback__
+        )
+        tb_string = "".join(tb_list)
+
+        update_str = update.to_dict() if isinstance(update, Update) else str(update)
+        message = (
+            f"An exception was raised while handling an update\n"
+            f"<pre>update = {html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))}"
+            "</pre>\n\n"
+            f"<pre>context.chat_data = {html.escape(str(context.chat_data))}</pre>\n\n"
+            f"<pre>context.user_data = {html.escape(str(context.user_data))}</pre>\n\n"
+            f"<pre>{html.escape(tb_string)}</pre>"
+        )
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text=message, parse_mode=ParseMode.HTML
+        )
+
+    application.add_error_handler(error)
 
     application.run_polling()
 
