@@ -221,7 +221,10 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player_list = CONFIG.order.lower().split()
     if player_name not in player_list:
         await context.bot.send_message(
-            chat_id=chat_id, text="{} is not one of {}".format(player_name, player_list)
+            chat_id=chat_id,
+            text="{} is not one of {}".format(
+                spell_hero_name(player_name), player_list
+            ),
         )
         return
 
@@ -231,12 +234,15 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hp = get_player_hp(update.effective_chat.id, player_name)
         except:
             await context.bot.send_message(
-                chat_id=chat_id, text="{} does not have hp set.".format(player_name)
+                chat_id=chat_id,
+                text="{} does not have hp set.".format(spell_hero_name(player_name)),
             )
             return
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="{} has {} HP.".format(spell_hero_name(player_name), hp),
+            text="{} has {} HP.".format(
+                spell_hero_name(spell_hero_name(player_name)), hp
+            ),
         )
     elif sub_command == "set" or sub_command == "=":
         hp = int(params[3])
@@ -253,7 +259,8 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             max_hp = get_player_max_hp(update.effective_chat.id, player_name)
         except:
             await context.bot.send_message(
-                chat_id=chat_id, text="{} does not have hp set.".format(player_name)
+                chat_id=chat_id,
+                text="{} does not have hp set.".format(spell_hero_name(player_name)),
             )
             return
         new_hp = min(get_player_hp(update.effective_chat.id, player_name) + hp, max_hp)
@@ -268,7 +275,8 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_hp = max(get_player_hp(update.effective_chat.id, player_name) - hp, 0)
         except:
             await context.bot.send_message(
-                chat_id=chat_id, text="{} does not have hp set.".format(player_name)
+                chat_id=chat_id,
+                text="{} does not have hp set.".format(spell_hero_name(player_name)),
             )
             return
         set_player_hp(update.effective_chat.id, player_name, new_hp)
@@ -298,7 +306,10 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player_list = CONFIG.order.lower().split()
     if player_name not in player_list:
         await context.bot.send_message(
-            chat_id=chat_id, text="{} is not one of {}".format(player_name, player_list)
+            chat_id=chat_id,
+            text="{} is not one of {}".format(
+                spell_hero_name(player_name), player_list
+            ),
         )
         return
 
@@ -325,7 +336,7 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(player_cards) == 0:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} Could not find in {}".format(card_name, CARDS[player_name]),
+                text="Cound not find {} in {}".format(card_name, CARDS[player_name]),
             )
         else:
             await send_cards(player_name, player_cards, chat_id, context)
@@ -342,12 +353,12 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(player_cards) == 0:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} Could not find in {}".format(card_name, CARDS[player_name]),
+                text="Could not find {} in {}".format(card_name, CARDS[player_name]),
             )
         set_player_card_status(chat_id, player_name, player_cards[0], flipped=False)
         await context.bot.send_message(
             chat_id=chat_id,
-            text="{} drew {}".format(player_name, player_cards[0]),
+            text="{} drew {}".format(spell_hero_name(player_name), player_cards[0]),
         )
         return
     elif sub_command == "discard":
@@ -368,33 +379,38 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=chat_id,
                 text="Could not find {} in {}'s hand {}".format(
-                    card_name, player_name, all_cards
+                    card_name, spell_hero_name(player_name), all_cards
                 ),
             )
             return
         remove_player_card_status(chat_id, player_name, discarded_cards[0])
         await context.bot.send_message(
             chat_id=chat_id,
-            text="{} discarded {}".format(player_name, discarded_cards[0]),
+            text="{} discarded {}".format(
+                spell_hero_name(player_name), discarded_cards[0]
+            ),
         )
         return
     elif sub_command == "hand":
-        active_cards = list(
-            get_player_cards(update.effective_chat.id, player_name, flipped=False)
-        )
         await send_cards(
             player_name,
-            cards=[c for c in active_cards if c in CARDS[player_name]],
+            cards=[
+                c
+                for c in get_player_cards(
+                    update.effective_chat.id, player_name, flipped=False
+                )
+                if c in CARDS[player_name]
+            ],
             chat_id=chat_id,
             context=context,
         )
-        flipped_cards = list(
+        if flipped_cards := list(
             get_player_cards(update.effective_chat.id, player_name, flipped=True)
-        )
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="{}'s flipped cards {}".format(player_name, flipped_cards),
-        )
+        ):
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"{spell_hero_name(player_name)}'s flipped cards {flipped_cards}",
+            )
         return
     elif sub_command == "flip":
         if len(params) < 3:
@@ -423,7 +439,7 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 text="Could not find {} in {}'s hand {}".format(
                     card_name,
-                    player_name,
+                    spell_hero_name(player_name),
                     list(
                         get_player_cards(
                             update.effective_chat.id, player_name, flipped=None
@@ -439,7 +455,9 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} flipped {}".format(player_name, not_flipped_cards[0]),
+                text="{} flipped {}".format(
+                    spell_hero_name(player_name), not_flipped_cards[0]
+                ),
             )
         else:
             set_player_card_status(
@@ -447,7 +465,9 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} unflipped {}".format(player_name, flipped_cards[0]),
+                text="{} unflipped {}".format(
+                    spell_hero_name(player_name), flipped_cards[0]
+                ),
             )
         return
     else:
