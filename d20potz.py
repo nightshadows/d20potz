@@ -303,7 +303,6 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     sub_command = "hand" if len(params) == 2 else params[2]
-    logging.info(sub_command)
     if sub_command == "all":
         player_cards = CARDS[player_name]
         if not player_cards:
