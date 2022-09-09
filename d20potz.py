@@ -31,7 +31,7 @@ def read_configuration(secret_config, default_config):
         db_location = cp.get("bot", "db_dir")
         token = cp.get("bot", "telegram_token")
         cards_dir = cp.get("bot", "cards_dir", fallback="./cards")
-        spelling = cp.items("spelling")
+        spelling = dict(cp.items("spelling"))
         order = cp.get("general", "player_list", fallback="")
         hp_defaults = cp.items("hp")
         return D20PotzBotConfiguration(
@@ -70,19 +70,19 @@ def ParseArgs():
 ###############################################################################################
 
 
-def getCurrentPlayerId(chat_id):
+def get_current_player_id(chat_id):
     current_player_id_key = "current_player_{}".format(chat_id).encode("utf-8")
     current_player_id = DB.Get(current_player_id_key)
     return int(current_player_id.decode("utf-8"))
 
 
-def getPlayerById(chat_id, player_id):
+def get_player_by_id(chat_id, player_id):
     player_list_key = "player_list_{}".format(chat_id).encode("utf-8")
     player_list = DB.Get(player_list_key).decode("utf-8").split()
     return player_list[player_id]
 
 
-def getNextPlayerId(chat_id):
+def get_next_player_id(chat_id):
     player_list_key = "player_list_{}".format(chat_id).encode("utf-8")
     player_list = DB.Get(player_list_key).decode("utf-8").split()
     current_player_id_key = "current_player_{}".format(chat_id).encode("utf-8")
@@ -91,12 +91,12 @@ def getNextPlayerId(chat_id):
     return next_player_id
 
 
-def setCurrentPlayerId(chat_id, player_id: int):
+def set_current_player_id(chat_id, player_id: int):
     current_player_id_key = "current_player_{}".format(chat_id).encode("utf-8")
     DB.Put(current_player_id_key, str(player_id).encode("utf-8"))
 
 
-def getPlayerHp(chat_id, player_name):
+def get_player_hp(chat_id, player_name):
     player_hp_key = "player_hp_{}_{}".format(chat_id, player_name.lower()).encode(
         "utf-8"
     )
@@ -104,7 +104,7 @@ def getPlayerHp(chat_id, player_name):
     return int(player_hp.decode("utf-8"))
 
 
-def getPlayerMaxHp(chat_id, player_name):
+def get_player_max_hp(chat_id, player_name):
     player_max_hp_key = "player_max_hp_{}_{}".format(
         chat_id, player_name.lower()
     ).encode("utf-8")
@@ -112,47 +112,43 @@ def getPlayerMaxHp(chat_id, player_name):
     return int(player_max_hp.decode("utf-8"))
 
 
-def setPlayerHp(chat_id, player_name, hp):
+def set_player_hp(chat_id, player_name, hp):
     player_hp_key = "player_hp_{}_{}".format(chat_id, player_name.lower()).encode(
         "utf-8"
     )
     DB.Put(player_hp_key, str(hp).encode("utf-8"))
 
 
-def setPlayerMaxHp(chat_id, player_name, max_hp):
+def set_player_max_hp(chat_id, player_name, max_hp):
     player_max_hp_key = "player_max_hp_{}_{}".format(
         chat_id, player_name.lower()
     ).encode("utf-8")
     DB.Put(player_max_hp_key, str(max_hp).encode("utf-8"))
 
 
-def getSpelling(hero_name):
-    hero_name = hero_name.lower()
-    for hero, spelling in CONFIG.spelling:
-        if hero == hero_name:
-            return spelling
-    return hero_name
+def spell_hero_name(hero_name):
+    return CONFIG.spelling.get(hero_name.lower(), hero_name)
 
 
-def setPlayerOrder(chat_id, player_list):
+def set_player_order(chat_id, player_list):
     player_list_key = "player_list_{}".format(chat_id).encode("utf-8")
     player_list = " ".join(player_list)
     DB.Put(player_list_key, player_list.encode("utf-8"))
-    setCurrentPlayerId(chat_id, 0)
+    set_current_player_id(chat_id, 0)
 
 
-def setPlayerCardStatus(chat_id, player_id, card_id, flipped: bool):
+def set_player_card_status(chat_id, player_id, card_id, flipped: bool):
     card_key = f"card_status_{chat_id}_{player_id}_{card_id}".encode("utf-8")
     logging.info(f"Writing card status for key {card_key}")
     DB.Put(card_key, b"1" if flipped else b"0")
 
 
-def removePlayerCardStatus(chat_id, player_id, card_id):
+def remove_player_card_status(chat_id, player_id, card_id):
     card_key = f"card_status_{chat_id}_{player_id}_{card_id}".encode("utf-8")
     DB.Delete(card_key)
 
 
-def getPlayerCards(chat_id, player_id, flipped: bool):
+def get_player_cards(chat_id, player_id, flipped: bool):
     key_prefix = f"card_status_{chat_id}_{player_id}_"
     for k, v in DB.RangeIter(
         key_from=key_prefix.encode("utf-8"),
@@ -166,11 +162,9 @@ async def send_cards(
     player: str, cards: List[str], chat_id: int, context: ContextTypes.DEFAULT_TYPE
 ):
     media_list = list()
-    for playerCard in cards:
-        photoFilePath = os.path.join(
-            CONFIG.cards_dir, player.lower(), playerCard + ".jpg"
-        )
-        media_item = InputMediaPhoto(media=open(photoFilePath, "rb"))
+    for card in cards:
+        photo_file_path = os.path.join(CONFIG.cards_dir, player.lower(), card + ".jpg")
+        media_item = InputMediaPhoto(media=open(photo_file_path, "rb"))
         media_list.append(media_item)
     await context.bot.send_media_group(chat_id=chat_id, media=media_list)
 
@@ -178,38 +172,38 @@ async def send_cards(
 ###############################################################################################
 
 
-async def turnCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def turn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
     sub_command = "get" if len(params) == 1 else params[1]
     if sub_command == "get":
-        current_player = getPlayerById(
-            update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
+        current_player = get_player_by_id(
+            update.effective_chat.id, get_current_player_id(update.effective_chat.id)
         )
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="It is {}'s turn.".format(getSpelling(current_player)),
+            text="It is {}'s turn.".format(spell_hero_name(current_player)),
         )
     elif sub_command == "set":
         players = update.message.text.lower().split()[2:]
         full_player_list = CONFIG.order.lower().split()
         players_filtered = [c for c in players if c in full_player_list]
-        setPlayerOrder(update.effective_chat.id, players)
+        set_player_order(update.effective_chat.id, players)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="Player list is set to {}.".format(players_filtered),
         )
     elif sub_command == "next":
-        current_player = getPlayerById(
-            update.effective_chat.id, getCurrentPlayerId(update.effective_chat.id)
+        current_player = get_player_by_id(
+            update.effective_chat.id, get_current_player_id(update.effective_chat.id)
         )
-        nextPlayerId = getNextPlayerId(update.effective_chat.id)
-        setCurrentPlayerId(update.effective_chat.id, nextPlayerId)
-        nextPlayer = getPlayerById(update.effective_chat.id, nextPlayerId)
+        next_player_id = get_next_player_id(update.effective_chat.id)
+        set_current_player_id(update.effective_chat.id, next_player_id)
+        next_player = get_player_by_id(update.effective_chat.id, next_player_id)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="{}'s turn ended. It is now {}'s turn.".format(
-                getSpelling(current_player), getSpelling(nextPlayer)
+                spell_hero_name(current_player), getSpelling(next_player)
             ),
         )
     else:
@@ -219,7 +213,7 @@ async def turnCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
     player_name = params[1]
@@ -233,7 +227,7 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sub_command = "get" if len(params) == 2 else params[2]
     if sub_command == "get":
         try:
-            hp = getPlayerHp(update.effective_chat.id, player_name)
+            hp = get_player_hp(update.effective_chat.id, player_name)
         except:
             await context.bot.send_message(
                 chat_id=chat_id, text="{} does not have hp set.".format(player_name)
@@ -241,45 +235,45 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="{} has {} HP.".format(getSpelling(player_name), hp),
+            text="{} has {} HP.".format(spell_hero_name(player_name), hp),
         )
     elif sub_command == "set" or sub_command == "=":
         hp = int(params[3])
-        setPlayerHp(update.effective_chat.id, player_name, hp)
-        setPlayerMaxHp(update.effective_chat.id, player_name, hp)
+        set_player_hp(update.effective_chat.id, player_name, hp)
+        set_player_max_hp(update.effective_chat.id, player_name, hp)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="{}'s HP set to {}.".format(getSpelling(player_name), hp),
+            text="{}'s HP set to {}.".format(spell_hero_name(player_name), hp),
         )
 
     elif sub_command == "add" or sub_command == "+":
         hp = int(params[3])
         try:
-            max_hp = getPlayerMaxHp(update.effective_chat.id, player_name)
+            max_hp = get_player_max_hp(update.effective_chat.id, player_name)
         except:
             await context.bot.send_message(
                 chat_id=chat_id, text="{} does not have hp set.".format(player_name)
             )
             return
-        newHp = min(getPlayerHp(update.effective_chat.id, player_name) + hp, max_hp)
-        setPlayerHp(update.effective_chat.id, player_name, newHp)
+        new_hp = min(get_player_hp(update.effective_chat.id, player_name) + hp, max_hp)
+        set_player_hp(update.effective_chat.id, player_name, new_hp)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="{}'s HP set to {}.".format(getSpelling(player_name), newHp),
+            text="{}'s HP set to {}.".format(spell_hero_name(player_name), new_hp),
         )
     elif sub_command == "sub" or sub_command == "-":
         hp = int(params[3])
         try:
-            newHp = max(getPlayerHp(update.effective_chat.id, player_name) - hp, 0)
+            new_hp = max(get_player_hp(update.effective_chat.id, player_name) - hp, 0)
         except:
             await context.bot.send_message(
                 chat_id=chat_id, text="{} does not have hp set.".format(player_name)
             )
             return
-        setPlayerHp(update.effective_chat.id, player_name, newHp)
+        set_player_hp(update.effective_chat.id, player_name, new_hp)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="{}'s HP set to {}.".format(getSpelling(player_name), newHp),
+            text="{}'s HP set to {}.".format(spell_hero_name(player_name), new_hp),
         )
 
     else:
@@ -289,7 +283,7 @@ async def hpCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
 
@@ -313,7 +307,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not player_cards:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} has no cards.".format(getSpelling(player_name)),
+                text="{} has no cards.".format(spell_hero_name(player_name)),
             )
         else:
             await send_cards(player_name, player_cards, chat_id, context)
@@ -349,7 +343,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 text="{} Could not find in {}".format(card_name, CARDS[player_name]),
             )
-        setPlayerCardStatus(chat_id, player_name, player_cards[0], flipped=False)
+        set_player_card_status(chat_id, player_name, player_cards[0], flipped=False)
         await context.bot.send_message(
             chat_id=chat_id,
             text="{} drew {}".format(player_name, player_cards[0]),
@@ -364,7 +358,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         card_name = params[3]
         all_cards = list(
-            getPlayerCards(update.effective_chat.id, player_name, flipped=None)
+            get_player_cards(update.effective_chat.id, player_name, flipped=None)
         )
         discarded_cards = [c for c in all_cards if card_name in c]
 
@@ -377,7 +371,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
             )
             return
-        removePlayerCardStatus(chat_id, player_name, discarded_cards[0])
+        remove_player_card_status(chat_id, player_name, discarded_cards[0])
         await context.bot.send_message(
             chat_id=chat_id,
             text="{} discarded {}".format(player_name, discarded_cards[0]),
@@ -386,11 +380,11 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif sub_command == "hand":
         try:
             active_cards = list(
-                getPlayerCards(update.effective_chat.id, player_name, flipped=False)
+                get_player_cards(update.effective_chat.id, player_name, flipped=False)
             )
             await send_cards(player_name, active_cards, chat_id, context)
             flipped_cards = list(
-                getPlayerCards(update.effective_chat.id, player_name, flipped=True)
+                get_player_cards(update.effective_chat.id, player_name, flipped=True)
             )
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -399,7 +393,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="{} has no cards.".format(getSpelling(player_name)),
+                text="{} has no cards.".format(spell_hero_name(player_name)),
             )
         return
     elif sub_command == "flip":
@@ -412,14 +406,16 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
         card_name = params[3]
         not_flipped_cards = [
             c
-            for c in getPlayerCards(
+            for c in get_player_cards(
                 update.effective_chat.id, player_name, flipped=False
             )
             if card_name in c
         ]
         flipped_cards = [
             c
-            for c in getPlayerCards(update.effective_chat.id, player_name, flipped=True)
+            for c in get_player_cards(
+                update.effective_chat.id, player_name, flipped=True
+            )
             if card_name in c
         ]
         if len(not_flipped_cards) == 0 and len(flipped_cards) == 0:
@@ -429,7 +425,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     card_name,
                     player_name,
                     list(
-                        getPlayerCards(
+                        get_player_cards(
                             update.effective_chat.id, player_name, flipped=None
                         )
                     ),
@@ -438,7 +434,7 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if len(not_flipped_cards) > 0:
-            setPlayerCardStatus(
+            set_player_card_status(
                 chat_id, player_name, not_flipped_cards[0], flipped=True
             )
             await context.bot.send_message(
@@ -446,7 +442,9 @@ async def cardsCommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="{} flipped {}".format(player_name, not_flipped_cards[0]),
             )
         else:
-            setPlayerCardStatus(chat_id, player_name, flipped_cards[0], flipped=False)
+            set_player_card_status(
+                chat_id, player_name, flipped_cards[0], flipped=False
+            )
             await context.bot.send_message(
                 chat_id=chat_id,
                 text="{} unflipped {}".format(player_name, flipped_cards[0]),
@@ -492,13 +490,13 @@ def d20potzbot():
     roll20_handler = CommandHandler("roll20", roll20.roll20)
     application.add_handler(roll20_handler)
 
-    turn_handler = CommandHandler("turn", turnCommand)
+    turn_handler = CommandHandler("turn", turn_command)
     application.add_handler(turn_handler)
 
-    hp_handler = CommandHandler("hp", hpCommand)
+    hp_handler = CommandHandler("hp", hp_command)
     application.add_handler(hp_handler)
 
-    cards_handler = CommandHandler("cards", cardsCommand)
+    cards_handler = CommandHandler("cards", cards_command)
     application.add_handler(cards_handler)
 
     application.run_polling()
