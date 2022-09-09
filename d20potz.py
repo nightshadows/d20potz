@@ -166,7 +166,8 @@ async def send_cards(
         photo_file_path = os.path.join(CONFIG.cards_dir, player.lower(), card + ".jpg")
         media_item = InputMediaPhoto(media=open(photo_file_path, "rb"))
         media_list.append(media_item)
-    await context.bot.send_media_group(chat_id=chat_id, media=media_list)
+    if media_list:
+        await context.bot.send_media_group(chat_id=chat_id, media=media_list)
 
 
 ###############################################################################################
@@ -302,6 +303,7 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     sub_command = "hand" if len(params) == 2 else params[2]
+    logging.info(sub_command)
     if sub_command == "all":
         player_cards = CARDS[player_name]
         if not player_cards:
@@ -457,7 +459,6 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         )
         return
-
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
