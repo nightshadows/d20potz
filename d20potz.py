@@ -169,7 +169,47 @@ async def send_cards(
     if media_list:
         await context.bot.send_media_group(chat_id=chat_id, media=media_list)
 
+async def check_player_name(context: ContextTypes.DEFAULT_TYPE, chat_id, player_name):
+    player_list = CONFIG.order.lower().split()
+    if player_name not in player_list:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="{} is not one of {}".format(
+                spell_hero_name(player_name), player_list
+            ),
+        )
+        return False
+    return True
 
+def set_claim_status(chat_id, player_name, user_id, claim: bool):
+    claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
+    logging.info(f"Writing claim status for key {claim_key}")
+    if claim:
+        DB.Put(claim_key, str(user_id).encode("utf-8"))
+    else:
+        DB.Delete(claim_key)
+
+def get_player_by_user(chat_id, user_id):
+    player_list = CONFIG.order.lower().split()
+    
+    for player_name in player_list:
+        claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
+        claimant = DB.Get(claim_key, default = None)
+        if claimant != None and claimant.decode() == str(user_id):
+            return player_name
+        
+    return None
+
+def is_player_claimed(chat_id, player_name):
+    claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
+    claimed_user_id = DB.Get(claim_key, default = None)
+    return claimed_user_id != None
+
+def is_player_claimed_by_user(chat_id, player_name, user_id):
+    claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
+    claimed_user_id = DB.Get(claim_key, default = None)
+    return claimed_user_id != None and claimed_user_id.decode() == str(user_id)
+        
 ###############################################################################################
 
 
@@ -215,20 +255,18 @@ async def turn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    params = update.message.text.split()
     chat_id = update.effective_chat.id
-    player_name = params[1]
-    player_list = CONFIG.order.lower().split()
-    if player_name not in player_list:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="{} is not one of {}".format(
-                spell_hero_name(player_name), player_list
-            ),
-        )
-        return
 
-    sub_command = "get" if len(params) == 2 else params[2]
+    player_name = get_player_by_user(chat_id, update.message.from_user.id)
+    params = update.message.text.split()
+    last_param = params[-1:][0].lower()
+    player_list = CONFIG.order.lower().split()
+    
+    if last_param in player_list:
+        player_name = last_param
+        params.pop()
+
+    sub_command = "get" if len(params) == 1 else params[1]
     if sub_command == "get":
         try:
             hp = get_player_hp(update.effective_chat.id, player_name)
@@ -245,7 +283,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         )
     elif sub_command == "set" or sub_command == "=":
-        hp = int(params[3])
+        hp = int(params[2])
         set_player_hp(update.effective_chat.id, player_name, hp)
         set_player_max_hp(update.effective_chat.id, player_name, hp)
         await context.bot.send_message(
@@ -254,7 +292,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif sub_command == "add" or sub_command == "+":
-        hp = int(params[3])
+        hp = int(params[2])
         try:
             max_hp = get_player_max_hp(update.effective_chat.id, player_name)
         except:
@@ -270,7 +308,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="{}'s HP set to {}.".format(spell_hero_name(player_name), new_hp),
         )
     elif sub_command == "sub" or sub_command == "-":
-        hp = int(params[3])
+        hp = int(params[2])
         try:
             new_hp = max(get_player_hp(update.effective_chat.id, player_name) - hp, 0)
         except:
@@ -288,7 +326,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Usage: /hp <player> [+|-] <hp>",
+            text="Usage: /hp [+|-] <hp> (player)",
         )
 
 
@@ -296,24 +334,15 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
 
-    if len(params) < 2:
-        await context.bot.send_message(
-            chat_id=chat_id, text="Usage: /cards <player> <sub_command>"
-        )
-        return
-
-    player_name = params[1].lower()
+    player_name = get_player_by_user(chat_id, update.message.from_user.id)
+    last_param = params[-1:][0]
     player_list = CONFIG.order.lower().split()
-    if player_name not in player_list:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="{} is not one of {}".format(
-                spell_hero_name(player_name), player_list
-            ),
-        )
-        return
+    
+    if last_param in player_list:
+        player_name = last_param
+        params.pop()
 
-    sub_command = "hand" if len(params) == 2 else params[2]
+    sub_command = "hand" if len(params) == 1 else params[1]
     if sub_command == "all":
         player_cards = CARDS[player_name]
         if not player_cards:
@@ -325,13 +354,13 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_cards(player_name, player_cards, chat_id, context)
         return
     elif sub_command == "show":
-        if len(params) < 3:
+        if len(params) < 2:
             await context.bot.send_message(
-                chat_id=chat_id, text="Usage: /cards <player> show <card name>"
+                chat_id=chat_id, text="Usage: /cards show <card name> (player)"
             )
             return
 
-        card_name = params[3]
+        card_name = params[2]
         player_cards = [c for c in CARDS[player_name] if card_name in c]
         if len(player_cards) == 0:
             await context.bot.send_message(
@@ -342,13 +371,13 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_cards(player_name, player_cards, chat_id, context)
         return
     elif sub_command == "draw":
-        if len(params) < 3:
+        if len(params) < 2:
             await context.bot.send_message(
-                chat_id=chat_id, text="Usage: /cards <player> draw <card name>"
+                chat_id=chat_id, text="Usage: /cards draw <card name> (player)"
             )
             return
 
-        card_name = params[3]
+        card_name = params[2]
         player_cards = player_cards = [c for c in CARDS[player_name] if card_name in c]
         if len(player_cards) == 0:
             await context.bot.send_message(
@@ -362,13 +391,13 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     elif sub_command == "discard":
-        if len(params) < 3:
+        if len(params) < 2:
             await context.bot.send_message(
-                chat_id=chat_id, text="Usage: /cards <player> flip <card name>"
+                chat_id=chat_id, text="Usage: /cards flip <card name> (player)"
             )
             return
 
-        card_name = params[3]
+        card_name = params[2]
         all_cards = list(
             get_player_cards(update.effective_chat.id, player_name, flipped=None)
         )
@@ -413,13 +442,13 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     elif sub_command == "flip":
-        if len(params) < 3:
+        if len(params) < 2:
             await context.bot.send_message(
-                chat_id=chat_id, text="Usage: /cards <player> flip <card name>"
+                chat_id=chat_id, text="Usage: /cards flip <card name> (player)"
             )
             return
 
-        card_name = params[3]
+        card_name = params[2]
         not_flipped_cards = [
             c
             for c in get_player_cards(
@@ -479,25 +508,64 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+async def claim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    params = update.message.text.split()
+    chat_id = update.effective_chat.id
+    user_id = update.message.from_user.id
 
+    if len(params) < 2:
+        await context.bot.send_message(
+            chat_id=chat_id, text="Usage: /claim <player>"
+        )
+        return
+
+    player_name = params[1].lower()
+    if not await check_player_name(context, chat_id, player_name):
+        return   
+    
+    if is_player_claimed(chat_id, player_name):
+        if is_player_claimed_by_user(chat_id, player_name, user_id):
+            await context.bot.send_message(
+                chat_id=chat_id, text="You've already claimed {}".format(player_name)
+            )
+            return
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id, text="{} claim cleared".format(player_name)
+            )
+            set_claim_status(chat_id, player_name, None, False)
+   
+    current_claim = get_player_by_user(chat_id, user_id)
+    if current_claim != None: 
+        await context.bot.send_message(
+            chat_id=chat_id, text="{} unclaimed".format(current_claim)
+        )
+        set_claim_status(chat_id, current_claim, user_id, False)
+
+    await context.bot.send_message(
+            chat_id=chat_id, text="{} claimed".format(player_name)
+        )
+    set_claim_status(chat_id, player_name, user_id, True)
+        
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="list of commands \n"
         + "/roll20 - roll a d20 \n"
         + "/cards <player> - list cards in player hand \n"
-        + "/cards <player> all - show all player cards with images \n"
-        + "/cards <player> show <card name> - show image of a single card \n"
-        + "/cards <player> draw <card name>... - add card to player hand \n"
-        + "/cards <player> discard <card name> - remove card from player hand \n"
-        + "/cards <player> flip <card name> - turn card from player hand \n"
+        + "/cards all <player> - show all player cards with images \n"
+        + "/cards show <card name> <player> - show image of a single card \n"
+        + "/cards draw <card name> <player> - add card to player hand \n"
+        + "/cards discard <card name> <player> - remove card from player hand \n"
+        + "/cards flip <card name> <player> - turn card from player hand \n"
         + "/hp <player> - show player hit points \n"
-        + "/hp <player> = X - set player hit points to X \n"
-        + "/hp <player> + X - increase player hit points by X \n"
-        + "/hp <player> - X - decrease player hit points by X \n"
+        + "/hp = X <player> - set player hit points to X \n"
+        + "/hp + X <player> - increase player hit points by X \n"
+        + "/hp - X <player> - decrease player hit points by X \n"
         + "/turn - show current turn \n"
         + "/turn set <player1>,<player2>... - set order of players \n"
-        + "/turn next - advance to next player \n",
+        + "/turn next - advance to next player \n"
+        + "/claim <player> - claim player to your account \n",
     )
 
 
@@ -518,6 +586,9 @@ def d20potzbot():
 
     cards_handler = CommandHandler("cards", cards_command)
     application.add_handler(cards_handler)
+
+    claim_handler = CommandHandler("claim", claim_command)
+    application.add_handler(claim_handler)
 
     async def error(update, context):
         import traceback
