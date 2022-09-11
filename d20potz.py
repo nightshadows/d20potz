@@ -259,7 +259,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     player_name = get_player_by_user(chat_id, update.message.from_user.id)
     params = update.message.text.split()
-    last_param = params[-1:][0]
+    last_param = params[-1:][0].lower()
     player_list = CONFIG.order.lower().split()
     
     if last_param in player_list:
@@ -526,12 +526,12 @@ async def claim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_player_claimed(chat_id, player_name):
         if is_player_claimed_by_user(chat_id, player_name, user_id):
             await context.bot.send_message(
-                chat_id=chat_id, text="You've already claimed {}, stupid potz".format(player_name)
+                chat_id=chat_id, text="You've already claimed {}".format(player_name)
             )
             return
         else:
             await context.bot.send_message(
-                chat_id=chat_id, text="Stealing {}? Nice move, potz".format(player_name)
+                chat_id=chat_id, text="{} claim cleared".format(player_name)
             )
             set_claim_status(chat_id, player_name, None, False)
    
