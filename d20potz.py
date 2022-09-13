@@ -244,7 +244,7 @@ async def turn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="{}'s turn ended. It is now {}'s turn.".format(
-                spell_hero_name(current_player), getSpelling(next_player)
+                spell_hero_name(current_player), spell_hero_name(next_player)
             ),
         )
     else:
