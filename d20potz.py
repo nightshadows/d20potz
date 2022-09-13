@@ -259,12 +259,13 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     player_name = get_player_by_user(chat_id, update.message.from_user.id)
     params = update.message.text.split()
-    last_param = params[-1:][0].lower()
-    player_list = CONFIG.order.lower().split()
-    
-    if last_param in player_list:
-        player_name = last_param
-        params.pop()
+
+    if len(params) > 1:       
+        player_param = params[1].lower()
+        player_list = CONFIG.order.lower().split()    
+        if player_param in player_list:
+            player_name = player_param
+            del params[1]
 
     sub_command = "get" if len(params) == 1 else params[1]
     if sub_command == "get":
@@ -326,7 +327,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Usage: /hp [+|-] <hp> (player)",
+            text="Usage: /hp (player) [+|-] <hp>",
         )
 
 
@@ -335,12 +336,13 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
     player_name = get_player_by_user(chat_id, update.message.from_user.id)
-    last_param = params[-1:][0]
-    player_list = CONFIG.order.lower().split()
-    
-    if last_param in player_list:
-        player_name = last_param
-        params.pop()
+
+    if len(params) > 1:       
+        player_param = params[1].lower()
+        player_list = CONFIG.order.lower().split()    
+        if player_param in player_list:
+            player_name = player_param
+            del params[1]
 
     sub_command = "hand" if len(params) == 1 else params[1]
     if sub_command == "all":
@@ -444,7 +446,7 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif sub_command == "flip":
         if len(params) < 2:
             await context.bot.send_message(
-                chat_id=chat_id, text="Usage: /cards flip <card name> (player)"
+                chat_id=chat_id, text="Usage: /cards (player) flip <card name>"
             )
             return
 
@@ -552,16 +554,16 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text="list of commands \n"
         + "/roll20 - roll a d20 \n"
-        + "/cards <player> - list cards in player hand \n"
-        + "/cards all <player> - show all player cards with images \n"
-        + "/cards show <card name> <player> - show image of a single card \n"
-        + "/cards draw <card name> <player> - add card to player hand \n"
-        + "/cards discard <card name> <player> - remove card from player hand \n"
-        + "/cards flip <card name> <player> - turn card from player hand \n"
+        + "/cards (player) - list cards in player hand \n"
+        + "/cards (player) all <player> - show all player cards with images \n"
+        + "/cards (player) show <card name> - show image of a single card \n"
+        + "/cards (player) draw <card name> - add card to player hand \n"
+        + "/cards (player) discard <card name> - remove card from player hand \n"
+        + "/cards (player) flip <card name> - turn card from player hand \n"
         + "/hp <player> - show player hit points \n"
-        + "/hp = X <player> - set player hit points to X \n"
-        + "/hp + X <player> - increase player hit points by X \n"
-        + "/hp - X <player> - decrease player hit points by X \n"
+        + "/hp (player) = X - set player hit points to X \n"
+        + "/hp (player) + X - increase player hit points by X \n"
+        + "/hp (player) - X - decrease player hit points by X \n"
         + "/turn - show current turn \n"
         + "/turn set <player1>,<player2>... - set order of players \n"
         + "/turn next - advance to next player \n"
