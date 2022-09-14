@@ -19,7 +19,7 @@ from telegram.ext import (
 from potz import roll20
 
 D20PotzBotConfiguration = collections.namedtuple(
-    "D20PotzBotConfiguration", "db_location token cards_dir spelling order hp_defaults"
+    "D20PotzBotConfiguration", "db_location token cards_dir spelling order hp_defaults xp_default"
 )
 
 
@@ -33,9 +33,10 @@ def read_configuration(secret_config, default_config):
         cards_dir = cp.get("bot", "cards_dir", fallback="./cards")
         spelling = dict(cp.items("spelling"))
         order = cp.get("general", "player_list", fallback="")
+        xp_default = cp.get("general", "xp", fallback="0")
         hp_defaults = cp.items("hp")
         return D20PotzBotConfiguration(
-            db_location, token, cards_dir, spelling, order, hp_defaults
+            db_location, token, cards_dir, spelling, order, hp_defaults, xp_default
         )
 
 
@@ -108,7 +109,11 @@ def get_xp(chat_id):
     xp_key = "xp_{}".format(chat_id).encode(
         "utf-8"
     )
-    xp = DB.Get(xp_key)
+    try:
+        xp = DB.Get(xp_key)
+    except:
+        xp = CONFIG.xp_default
+        set_xp(chat_id, int(xp))
     return int(xp.decode("utf-8"))
 
 
