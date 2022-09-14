@@ -104,6 +104,14 @@ def get_player_hp(chat_id, player_name):
     return int(player_hp.decode("utf-8"))
 
 
+def get_xp(chat_id):
+    xp_key = "xp_{}".format(chat_id).encode(
+        "utf-8"
+    )
+    xp = DB.Get(xp_key)
+    return int(xp.decode("utf-8"))
+
+
 def get_player_max_hp(chat_id, player_name):
     player_max_hp_key = "player_max_hp_{}_{}".format(
         chat_id, player_name.lower()
@@ -117,6 +125,13 @@ def set_player_hp(chat_id, player_name, hp):
         "utf-8"
     )
     DB.Put(player_hp_key, str(hp).encode("utf-8"))
+
+
+def set_xp(chat_id, xp):
+    xp_key = "xp_{}".format(chat_id).encode(
+        "utf-8"
+    )
+    DB.Put(xp_key, str(xp).encode("utf-8"))
 
 
 def set_player_max_hp(chat_id, player_name, max_hp):
@@ -328,6 +343,72 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="Usage: /hp (player) [+|-] <hp>",
+        )
+
+
+async def xp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    params = update.message.text.split()
+
+    sub_command = "get" if len(params) == 1 else params[1]
+    if sub_command == "get":
+        try:
+            xp = get_xp(chat_id)
+        except:
+            await context.bot.send_message(
+                chat_id,
+                text="xp not set",
+            )
+            return
+        await context.bot.send_message(
+            chat_id,
+            text="Party has {} XP".format(xp),
+        )
+    elif sub_command == "set" or sub_command == "=":
+        xp = int(params[2])
+        set_xp(chat_id, xp)
+        await context.bot.send_message(
+            chat_id,
+            text="Party's XP set to {}".format(xp),
+        )
+
+    elif sub_command == "add" or sub_command == "+":
+        xp_to_add = int(params[2])
+        try:
+            xp = get_xp(chat_id)
+        except:
+            await context.bot.send_message(
+                chat_id,
+                text="Party's XP set to {}".format(xp),
+           )
+            return
+        new_xp = xp + xp_to_add
+        set_xp(chat_id, new_xp)
+        await context.bot.send_message(
+            chat_id,
+            text="Party's XP set to {}".format(new_xp),
+        )
+    elif sub_command == "sub" or sub_command == "-":
+        xp_to_sub = int(params[2])
+        try:
+            xp = get_xp(chat_id)
+        except:
+            await context.bot.send_message(
+                chat_id,
+                text="Party's XP set to {}".format(xp),
+           )
+            return
+        new_xp = xp - xp_to_sub
+        set_xp(chat_id, new_xp)
+        await context.bot.send_message(
+            chat_id,
+            text="Party's XP set to {}".format(new_xp),
+        )
+
+    else:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Usage: /xp [+|-] <xp>",
         )
 
 
@@ -564,6 +645,10 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + "/hp (player) = X - set player hit points to X \n"
         + "/hp (player) + X - increase player hit points by X \n"
         + "/hp (player) - X - decrease player hit points by X \n"
+        + "/xp - show current team xp \n"
+        + "/xp = value - set xp \n"
+        + "/xp + value - increase xp \n"
+        + "/xp - value - decrease xp \n"
         + "/turn - show current turn \n"
         + "/turn set <player1>,<player2>... - set order of players \n"
         + "/turn next - advance to next player \n"
@@ -586,6 +671,9 @@ def d20potzbot():
     hp_handler = CommandHandler("hp", hp_command)
     application.add_handler(hp_handler)
 
+    xp_handler = CommandHandler("xp", xp_command)
+    application.add_handler(xp_handler)
+    
     cards_handler = CommandHandler("cards", cards_command)
     application.add_handler(cards_handler)
 
