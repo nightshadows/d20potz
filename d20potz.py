@@ -282,7 +282,22 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(params) > 1:       
         player_param = params[1].lower()
-        player_list = CONFIG.order.lower().split()    
+        player_list = CONFIG.order.lower().split()
+
+        if player_param == "all":
+            text=""
+            for player_name in player_list:
+                try:
+                    hp = get_player_hp(chat_id, player_name)
+                    player_text = '{} has {} hp\n'.format(spell_hero_name(player_name), hp)
+                except:
+                    player_text = '{} does not have hp set\n'.format(spell_hero_name(player_name))
+                text += player_text
+            await context.bot.send_message(
+                chat_id,
+                text,
+            )
+            return
         if player_param in player_list:
             player_name = player_param
             del params[1]
@@ -646,7 +661,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + "/cards (player) draw <card name> - add card to player hand \n"
         + "/cards (player) discard <card name> - remove card from player hand \n"
         + "/cards (player) flip <card name> - turn card from player hand \n"
-        + "/hp <player> - show player hit points \n"
+        + "/hp <player|all> - show player(s) hit points \n"
         + "/hp (player) = X - set player hit points to X \n"
         + "/hp (player) + X - increase player hit points by X \n"
         + "/hp (player) - X - decrease player hit points by X \n"
