@@ -1,5 +1,5 @@
-cards - (player>) [all|show|draw|discard|flip|hand] <card>
-hp - (player) [|=|+|-]
+cards - (player) [all|show|draw|discard|flip|hand] <card>
+hp - (all|player) [|=|+|-]
 xp - [|=|+|-]
 roll20 - Roll the die
 turn - [|set|next]
