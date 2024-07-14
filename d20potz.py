@@ -103,8 +103,11 @@ def get_player_hp(chat_id, player_name):
     player_hp_key = "player_hp_{}_{}".format(chat_id, player_name.lower()).encode(
         "utf-8"
     )
-    player_hp = DB.Get(player_hp_key)
-    return int(player_hp.decode("utf-8"))
+    player_hp = DB.Get(player_hp_key, default = None)
+    if player_hp != None:
+        return int(player_hp.decode("utf-8"))
+    else:
+        return None
 
 
 def get_xp(chat_id):
@@ -319,26 +322,40 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(params) > 1:
         player_param = params[1].lower()
         player_list = CONFIG.order.lower().split()
+
+        if player_param == "all":
+            text=""
+            for player_name in player_list:
+                hp = get_player_hp(chat_id, player_name)
+                if hp != None:
+                    player_text = '{} has {} hp\n'.format(spell_hero_name(player_name), hp)
+                else:
+                    player_text = '{} does not have hp set\n'.format(spell_hero_name(player_name))
+                text += player_text
+            await context.bot.send_message(
+                chat_id,
+                text,
+            )
+            return
         if player_param in player_list:
             player_name = player_param
             del params[1]
 
     sub_command = "get" if len(params) == 1 else params[1]
     if sub_command == "get":
-        try:
-            hp = get_player_hp(update.effective_chat.id, player_name)
-        except:
+        hp = get_player_hp(update.effective_chat.id, player_name)
+        if hp != None:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="{} has {} HP.".format(
+                    spell_hero_name(spell_hero_name(player_name)), hp
+                ),
+            )
+        else:
             await context.bot.send_message(
                 chat_id=chat_id,
                 text="{} does not have hp set.".format(spell_hero_name(player_name)),
             )
-            return
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="{} has {} HP.".format(
-                spell_hero_name(spell_hero_name(player_name)), hp
-            ),
-        )
     elif sub_command == "set" or sub_command == "=":
         hp = int(params[2])
         set_player_hp(update.effective_chat.id, player_name, hp)
@@ -772,7 +789,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + "/cards (player) draw <card name> - add card to player hand \n"
         + "/cards (player) discard <card name> - remove card from player hand \n"
         + "/cards (player) flip <card name> - turn card from player hand \n"
-        + "/hp <player> - show player hit points \n"
+        + "/hp <player|all> - show player(s) hit points \n"
         + "/hp (player) = X - set player hit points to X \n"
         + "/hp (player) + X - increase player hit points by X \n"
         + "/hp (player) - X - decrease player hit points by X \n"
