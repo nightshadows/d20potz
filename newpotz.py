@@ -25,6 +25,7 @@ logger = setup_logging(logging.INFO, __name__)
 
 app = ApplicationBuilder().token(os.getenv("TELEGRAM_TOKEN")).build()
 is_initialized = False
+MAX_DICE = 5
 
 
 async def tg_bot_main(application, event):
@@ -61,6 +62,35 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await reply(start_text, update, context, botData)
 
+
+async def roll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Parse update to get bot data
+    botData = parse_update(update)
+
+    # Check and validate the number of dice from the command arguments
+    try:
+        num_dice = int(context.args[0]) if context.args else 1
+        if num_dice < 1 or num_dice > MAX_DICE:
+            raise ValueError
+    except (ValueError, IndexError):
+        error_message = f"Invalid number of dice. Please specify a number between 1 and {MAX_DICE}."
+        await reply(error_message, update, context, botData)
+        return
+
+    # Roll the dice and collect the results
+    dice_results = []
+    for _ in range(num_dice):
+        message = await context.bot.send_dice(chat_id=botData.chat_id)
+        dice_results.append(message.dice.value)
+
+    # Prepare the result message
+    dice_results_str = ", ".join(map(str, dice_results))
+    res = f"Rolling {num_dice} {'die' if num_dice == 1 else 'dice'}... {dice_results_str}"
+
+    # Reply with the result message
+    await reply(res, update, context, botData)
+
+
 # error handler, logs the error and sends the message to the chat if debug mode is enabled
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import html
@@ -91,6 +121,9 @@ def register_handlers(application):
 
     start_handler = CommandHandler("start", start_command)
     application.add_handler(start_handler)
+
+    roll_handler = CommandHandler("roll", roll_command)
+    application.add_handler(roll_handler)
 
     application.add_error_handler(error_handler)
 
