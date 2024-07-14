@@ -1,17 +1,15 @@
+"""
+d20potz specific utilities
+"""
+
 import logging
+from shared import setup_logging
 
-from texts import TEXT_HELP, TEXT_ROLL
-
-def setup_logging(level: int, name: str) -> logging.Logger:
-    logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.WARNING
-    )
-
-    new_logger = logging.getLogger(name)
-    new_logger.setLevel(level)
-    return new_logger
 
 logger = setup_logging(logging.INFO, __name__)
+
+
+from texts import TEXT_HELP, TEXT_ROLL
 
 
 def get_client_help_message() -> str:

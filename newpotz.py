@@ -18,7 +18,8 @@ from telegram.ext import (
 )
 
 from botdata import BotData
-from utils import get_client_help_message, setup_logging
+from utils import get_client_help_message
+from shared import setup_logging
 
 logger = setup_logging(logging.INFO, __name__)
 
