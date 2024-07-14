@@ -6,6 +6,9 @@ import logging
 from shared import setup_logging
 
 
+MAX_DICE = 5
+
+
 logger = setup_logging(logging.INFO, __name__)
 
 
@@ -16,7 +19,10 @@ def get_client_help_message() -> str:
     """
     Returns the help message for the client
     """
-    help_text = "What can this bot do?\n\n"
-    help_text += f"1. {TEXT_HELP} - Show this help message\n"
-    help_text += f"2. {TEXT_ROLL} - Roll the dice\n"
+    help_text = f"""
+What can this bot do?
+
+1. {TEXT_HELP} - Show this help message
+2. {TEXT_ROLL} [num_dice] - Roll a few d6 dice (between 1 and {MAX_DICE}, default is 1)
+""".strip()
     return help_text

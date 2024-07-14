@@ -18,14 +18,13 @@ from telegram.ext import (
 )
 
 from botdata import BotData
-from utils import get_client_help_message
+from utils import get_client_help_message, MAX_DICE
 from shared import setup_logging
 
 logger = setup_logging(logging.INFO, __name__)
 
 app = ApplicationBuilder().token(os.getenv("TELEGRAM_TOKEN")).build()
 is_initialized = False
-MAX_DICE = 5
 
 
 async def tg_bot_main(application, event):

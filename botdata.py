@@ -11,8 +11,7 @@ class BotData:
     params : list[str] = field(default_factory=list)
 
     def __init__(self, update):
-        message = update.message
-        if not message:
+        if not (message := update.message):
             message = update.edited_message
         if message:
             self.user_id = message.from_user.id

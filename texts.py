@@ -1,2 +1,2 @@
-TEXT_HELP = "Help"
-TEXT_ROLL = "Roll"
+TEXT_HELP = "/help"
+TEXT_ROLL = "/roll"
