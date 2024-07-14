@@ -19,7 +19,8 @@ from telegram.ext import (
 from potz import roll20
 
 D20PotzBotConfiguration = collections.namedtuple(
-    "D20PotzBotConfiguration", "db_location token cards_dir spelling order hp_defaults xp_default"
+    "D20PotzBotConfiguration",
+    "db_location token cards_dir spelling order hp_defaults xp_default",
 )
 
 
@@ -53,6 +54,7 @@ def read_cards(cards_dir):
 
 CONFIG = read_configuration("./d20potz.cfg", "./default.cfg")
 CARDS = read_cards(CONFIG.cards_dir)
+ITEMS = CARDS["items"]
 DB = leveldb.LevelDB(CONFIG.db_location)
 
 # Enable logging
@@ -109,9 +111,7 @@ def get_player_hp(chat_id, player_name):
 
 
 def get_xp(chat_id):
-    xp_key = "xp_{}".format(chat_id).encode(
-        "utf-8"
-    )
+    xp_key = "xp_{}".format(chat_id).encode("utf-8")
     try:
         xp = DB.Get(xp_key)
     except:
@@ -136,9 +136,7 @@ def set_player_hp(chat_id, player_name, hp):
 
 
 def set_xp(chat_id, xp):
-    xp_key = "xp_{}".format(chat_id).encode(
-        "utf-8"
-    )
+    xp_key = "xp_{}".format(chat_id).encode("utf-8")
     DB.Put(xp_key, str(xp).encode("utf-8"))
 
 
@@ -192,6 +190,7 @@ async def send_cards(
     if media_list:
         await context.bot.send_media_group(chat_id=chat_id, media=media_list)
 
+
 async def check_player_name(context: ContextTypes.DEFAULT_TYPE, chat_id, player_name):
     player_list = CONFIG.order.lower().split()
     if player_name not in player_list:
@@ -204,6 +203,7 @@ async def check_player_name(context: ContextTypes.DEFAULT_TYPE, chat_id, player_
         return False
     return True
 
+
 def set_claim_status(chat_id, player_name, user_id, claim: bool):
     claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
     logging.info(f"Writing claim status for key {claim_key}")
@@ -212,27 +212,63 @@ def set_claim_status(chat_id, player_name, user_id, claim: bool):
     else:
         DB.Delete(claim_key)
 
+
 def get_player_by_user(chat_id, user_id):
     player_list = CONFIG.order.lower().split()
-    
+
     for player_name in player_list:
         claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
-        claimant = DB.Get(claim_key, default = None)
+        claimant = DB.Get(claim_key, default=None)
         if claimant != None and claimant.decode() == str(user_id):
             return player_name
-        
+
     return None
+
 
 def is_player_claimed(chat_id, player_name):
     claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
-    claimed_user_id = DB.Get(claim_key, default = None)
+    claimed_user_id = DB.Get(claim_key, default=None)
     return claimed_user_id != None
+
 
 def is_player_claimed_by_user(chat_id, player_name, user_id):
     claim_key = f"player_claim_{chat_id}_{player_name}".encode("utf-8")
-    claimed_user_id = DB.Get(claim_key, default = None)
+    claimed_user_id = DB.Get(claim_key, default=None)
     return claimed_user_id != None and claimed_user_id.decode() == str(user_id)
-        
+
+
+def get_player_items(chat_id, player_id):
+    items_key = f"player_items_{chat_id}_{player_id}".encode("utf-8")
+    items = DB.Get(items_key, default="".encode("utf-8"))
+    return items.decode("utf-8").split()
+
+
+def add_player_item(chat_id, player_id, item_id) -> bool:
+    item_id = item_id.lower()
+    items_key = f"player_items_{chat_id}_{player_id}".encode("utf-8")
+    items = DB.Get(items_key, default="".encode("utf-8"))
+    items = items.decode("utf-8").split()
+    if item_id in items:
+        return False
+
+    items.append(item_id)
+    DB.Put(items_key, " ".join(items).encode("utf-8"))
+    return True
+
+
+def remove_player_item(chat_id, player_id, item_id) -> bool:
+    item_id = item_id.lower()
+    items_key = f"player_items_{chat_id}_{player_id}".encode("utf-8")
+    items = DB.Get(items_key, default="".encode("utf-8"))
+    items = items.decode("utf-8").split()
+    if item_id not in items:
+        return False
+
+    items.remove(item_id)
+    DB.Put(items_key, " ".join(items).encode("utf-8"))
+    return True
+
+
 ###############################################################################################
 
 
@@ -283,7 +319,7 @@ async def hp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player_name = get_player_by_user(chat_id, update.message.from_user.id)
     params = update.message.text.split()
 
-    if len(params) > 1:       
+    if len(params) > 1:
         player_param = params[1].lower()
         player_list = CONFIG.order.lower().split()
 
@@ -402,7 +438,7 @@ async def xp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id,
                 text="Party's XP set to {}".format(xp),
-           )
+            )
             return
         new_xp = xp + xp_to_add
         set_xp(chat_id, new_xp)
@@ -418,7 +454,7 @@ async def xp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id,
                 text="Party's XP set to {}".format(xp),
-           )
+            )
             return
         new_xp = xp - xp_to_sub
         set_xp(chat_id, new_xp)
@@ -440,9 +476,9 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     player_name = get_player_by_user(chat_id, update.message.from_user.id)
 
-    if len(params) > 1:       
+    if len(params) > 1:
         player_param = params[1].lower()
-        player_list = CONFIG.order.lower().split()    
+        player_list = CONFIG.order.lower().split()
         if player_param in player_list:
             player_name = player_param
             del params[1]
@@ -613,21 +649,110 @@ async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+
+async def items_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    params = update.message.text.split()
+    chat_id = update.effective_chat.id
+
+    player_name = get_player_by_user(chat_id, update.message.from_user.id)
+
+    if len(params) > 1:
+        player_param = params[1].lower()
+        player_list = CONFIG.order.lower().split()
+        if player_param in player_list:
+            player_name = player_param
+            del params[1]
+
+    sub_command = "hand" if len(params) == 1 else params[1]
+    if sub_command == "hand":
+        await send_cards(
+            "items",
+            get_player_items(update.effective_chat.id, player_name),
+            chat_id=chat_id,
+            context=context,
+        )
+        return
+    elif sub_command == "add":
+        if len(params) < 2:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Usage: /items add <item name> (player)"
+            )
+            return
+
+        item_name = params[2]
+        item_cards = [c for c in ITEMS if item_name in c]
+        if len(item_cards) == 0:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Could not find {} in {}".format(item_name, ITEMS),
+            )
+            return
+        added = add_player_item(chat_id, player_name, item_cards[0])
+        if added:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} added {}".format(spell_hero_name(player_name), item_cards[0]),
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} already has {}".format(
+                    spell_hero_name(player_name), item_cards[0]
+                ),
+            )
+        return
+    elif sub_command == "discard":
+        if len(params) < 2:
+            await context.bot.send_message(
+                chat_id=chat_id, text="Usage: /items discard <item name> (player)"
+            )
+            return
+
+        item_name = params[2]
+        item_cards = [c for c in ITEMS if item_name in c]
+        if len(item_cards) == 0:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Could not find {} in {}".format(item_name, ITEMS),
+            )
+            return
+        removed = remove_player_item(chat_id, player_name, item_cards[0])
+        if removed:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} removed {}".format(
+                    spell_hero_name(player_name), item_cards[0]
+                ),
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="{} did not have {}".format(
+                    spell_hero_name(player_name), item_cards[0]
+                ),
+            )
+        return
+    else:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="{} is not one of {}".format(sub_command, ["hand", "add", "discard"]),
+        )
+        return
+
+
 async def claim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = update.message.text.split()
     chat_id = update.effective_chat.id
     user_id = update.message.from_user.id
 
     if len(params) < 2:
-        await context.bot.send_message(
-            chat_id=chat_id, text="Usage: /claim <player>"
-        )
+        await context.bot.send_message(chat_id=chat_id, text="Usage: /claim <player>")
         return
 
     player_name = params[1].lower()
     if not await check_player_name(context, chat_id, player_name):
-        return   
-    
+        return
+
     if is_player_claimed(chat_id, player_name):
         if is_player_claimed_by_user(chat_id, player_name, user_id):
             await context.bot.send_message(
@@ -639,19 +764,20 @@ async def claim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id, text="{} claim cleared".format(player_name)
             )
             set_claim_status(chat_id, player_name, None, False)
-   
+
     current_claim = get_player_by_user(chat_id, user_id)
-    if current_claim != None: 
+    if current_claim != None:
         await context.bot.send_message(
             chat_id=chat_id, text="{} unclaimed".format(current_claim)
         )
         set_claim_status(chat_id, current_claim, user_id, False)
 
     await context.bot.send_message(
-            chat_id=chat_id, text="{} claimed".format(player_name)
-        )
+        chat_id=chat_id, text="{} claimed".format(player_name)
+    )
     set_claim_status(chat_id, player_name, user_id, True)
-        
+
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -695,9 +821,12 @@ def d20potzbot():
 
     xp_handler = CommandHandler("xp", xp_command)
     application.add_handler(xp_handler)
-    
+
     cards_handler = CommandHandler("cards", cards_command)
     application.add_handler(cards_handler)
+
+    items_handler = CommandHandler("items", items_command)
+    application.add_handler(items_handler)
 
     claim_handler = CommandHandler("claim", claim_command)
     application.add_handler(claim_handler)
