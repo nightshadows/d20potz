@@ -24,6 +24,19 @@ POTZ_TABLE = "potz_manager"
 dynamodb = boto3.resource('dynamodb')
 potztable = dynamodb.Table(POTZ_TABLE)
 
+
+@dataclass
+class PotzHero:
+    name: str
+    stress: int
+    harm: int
+
+    def __init__(self, name: str, stress: int = 0, harm: int = 0):
+        self.name = name
+        self.stress = stress
+        self.harm = harm
+
+
 @dataclass
 class BotData:
     user_id: int
@@ -51,6 +64,7 @@ class BotData:
     def sync(self):
         self.load_state()
         self.load_inline_message_id()
+        self.load_heroes()
 
     def load_state(self):
         try:
@@ -77,11 +91,58 @@ class BotData:
             logger.error("Error loading inline message id", exc_info=True)
             self.inline_message_id = None
 
+    def load_heroes(self):
+        try:
+            response = potztable.get_item(Key={'chat_id': str(self.chat_id)})
+            if 'Item' in response and 'heroes' in response['Item']:
+                self.heroes = [PotzHero(h['name'], h['stress'], h['harm']) for h in response['Item']['heroes']]
+            else:
+                self.heroes = []
+        except ClientError:
+            logger.error("Error loading heroes", exc_info=True)
+            self.heroes = []
+
     def save(self):
         try:
-            potztable.put_item(Item={'chat_id': str(self.chat_id), 'state': self.state_machine.get_state().name, 'inline_message_id': self.inline_message_id})
+            potztable.put_item(Item={
+                'chat_id': str(self.chat_id),
+                'state': self.state_machine.get_state().name,
+                'inline_message_id': self.inline_message_id,
+                'heroes': [{'name': h.name, 'stress': h.stress, 'harm': h.harm} for h in self.heroes],
+            })
         except ClientError:
             logger.error("Error saving state", exc_info=True)
+
+    def add_hero(self, context: ContextTypes.DEFAULT_TYPE) -> str:
+        if len(self.params) < 2 or len(self.params) > 4:
+            return "Usage: /add_hero <hero> [stress] [harm]"
+
+        hero = self.params[1]
+        stress = int(self.params[2]) if len(self.params) > 2 else 0
+        harm = int(self.params[3]) if len(self.params) > 3 else 0
+
+        if hero in [h.name for h in self.heroes]:
+            return "Hero already exists"
+
+        self.heroes.append(PotzHero(hero, stress, harm))
+        self.save()
+
+        self.process("root", context)
+
+        return f"Added hero {hero}"
+
+    def remove_hero(self, context: ContextTypes.DEFAULT_TYPE) -> str:
+        if len(self.params) != 2:
+            return "Usage: /remove_hero <hero>"
+
+        heroes_before = len(self.heroes)
+        hero = self.params[1]
+        self.heroes = [h for h in self.heroes if h.name != hero]
+        if len(self.heroes) == heroes_before:
+            return f"Hero {hero} not found"
+
+        self.save()
+        return f"Removed hero {hero}"
 
     async def set_inline_message_id(self, inline_message_id, context: ContextTypes.DEFAULT_TYPE):
         if inline_message_id == self.inline_message_id:
@@ -130,6 +191,36 @@ class BotData:
 
         return self.transition(PotzState.root)
 
+    async def process_hero(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
+        callback_parts = callback.split("_")
+        if len(callback_parts) != 3:
+            return "Invalid hero callback"
+
+        hero_name = callback_parts[2]
+        hero_field = callback_parts[0]
+        hero_op = callback_parts[1]
+
+        if hero_field not in ["stress", "harm"]:
+            return "Invalid hero field"
+
+        if hero_op not in ["plus", "minus"]:
+            return "Invalid operation"
+
+        hero = next((h for h in self.heroes if h.name == hero_name), None)
+        if hero is None:
+            return "Hero not found"
+
+        value = getattr(hero, hero_field)
+        if hero_op == "plus":
+            value += 1
+        else:
+            value -= 1
+
+        setattr(hero, hero_field, value)
+        self.save()
+
+        return self.get_default_header()
+
     async def process(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
         try:
             logger.info(f"Processing callback {callback}")
@@ -142,10 +233,8 @@ class BotData:
             state = self.state_machine.get_state()
             if state == PotzState.root:
                 pass
-            elif state == PotzState.stress:
-                pass
-            elif state == PotzState.harm:
-                pass
+            elif state in (PotzState.stress, PotzState.harm):
+                return await self.process_hero(callback, context)
             elif state == PotzState.timer:
                 pass
             elif state == PotzState.roll:
@@ -161,6 +250,18 @@ class BotData:
 
         return self.get_default_header()
 
+    def build_hero_keyboard(self, state: str):
+        keyboard = []
+        for hero in self.heroes:
+            line = []
+            value = getattr(hero, state)
+            line.append(InlineKeyboardButton(f"{hero.name}: {value}", callback_data=f"{state}_{hero.name}"))
+            line.append(InlineKeyboardButton("+", callback_data=f"{state}_plus_{hero.name}"))
+            if value > 0:
+                line.append(InlineKeyboardButton("-", callback_data=f"{state}_minus_{hero.name}"))
+            keyboard.append(line)
+        keyboard.append([InlineKeyboardButton("Back", callback_data=PotzState.root.name)])
+        return keyboard
 
     def get_inline_keyboard(self):
         state = self.state_machine.get_state()
@@ -172,9 +273,9 @@ class BotData:
                 [InlineKeyboardButton("Harm", callback_data=PotzState.harm.name), InlineKeyboardButton("Stress", callback_data=PotzState.stress.name)],
             ]
         elif state == PotzState.stress:
-            keyboard = [[InlineKeyboardButton("Back", callback_data=PotzState.root.name)]]
+            keyboard = self.build_hero_keyboard("stress")
         elif state == PotzState.harm:
-            keyboard = [[InlineKeyboardButton("Back", callback_data=PotzState.root.name)]]
+            keyboard = self.build_hero_keyboard("harm")
         elif state == PotzState.timer:
             keyboard = [[InlineKeyboardButton("Back", callback_data=PotzState.root.name)]]
         elif state == PotzState.roll:

@@ -78,6 +78,22 @@ async def roll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await reply(res, update, context, botData)
 
 
+async def add_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    botData = parse_update(update)
+
+    res = botData.add_hero(context)
+
+    return await reply(res, update, context, botData)
+
+
+async def remove_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    botData = parse_update(update)
+
+    res = botData.remove_hero(context)
+
+    return await reply(res, update, context, botData)
+
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     botData = parse_update(update)
 
@@ -132,6 +148,12 @@ def register_handlers(application):
 
     roll_handler = CommandHandler("roll", roll_command)
     application.add_handler(roll_handler)
+
+    add_hero_handler = CommandHandler("add_hero", add_hero_command)
+    application.add_handler(add_hero_handler)
+
+    remove_hero_handler = CommandHandler("remove_hero", remove_hero_command)
+    application.add_handler(remove_hero_handler)
 
     application.add_handler(CallbackQueryHandler(button_callback))
 
