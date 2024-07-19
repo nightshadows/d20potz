@@ -9,15 +9,19 @@ from telegram import (
     Update,
 )
 
+from telegram.error import BadRequest
+
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
     filters,
     MessageHandler,
+    CallbackQueryHandler,
 )
 
 from botdata import BotData
+from d20potz_state_machine import PotzState
 from utils import get_client_help_message, MAX_DICE
 from shared import setup_logging
 
@@ -36,15 +40,19 @@ async def tg_bot_main(application, event):
 
 def parse_update(update: Update) -> BotData:
     botData = BotData(update)
-    botData.sync()
     return botData
 
 
 async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, botData: BotData):
-    await context.bot.send_message(
+    message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text,
+        reply_markup=botData.get_inline_keyboard(),
     )
+
+    if message:
+        logger.info("Storing inline message id %s", message.message_id)
+        await botData.set_inline_message_id(message.message_id, context)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     botData = parse_update(update)
@@ -66,27 +74,28 @@ async def roll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Parse update to get bot data
     botData = parse_update(update)
 
-    # Check and validate the number of dice from the command arguments
+    res = await botData.process("roll", context)
+    return await reply(res, update, context, botData)
+
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    botData = parse_update(update)
+
+    res = ""
+
+    # Check if the callback data is a valid state
+    if botData.params:
+        res = await botData.process(botData.params[0], context)
+
+    # remove the inline keyboard
     try:
-        num_dice = int(context.args[0]) if context.args else 1
-        if num_dice < 1 or num_dice > MAX_DICE:
-            raise ValueError
-    except (ValueError, IndexError):
-        error_message = f"Invalid number of dice. Please specify a number between 1 and {MAX_DICE}."
-        await reply(error_message, update, context, botData)
-        return
+        await context.bot.edit_message_reply_markup(
+            chat_id=update.effective_chat.id,
+            message_id=update.callback_query.message.message_id,
+        )
+    except BadRequest:
+        pass # this will happen if we are cleaning up already deleted messages
 
-    # Roll the dice and collect the results
-    dice_results = []
-    for _ in range(num_dice):
-        message = await context.bot.send_dice(chat_id=botData.chat_id)
-        dice_results.append(message.dice.value)
-
-    # Prepare the result message
-    dice_results_str = ", ".join(map(str, dice_results))
-    res = f"Rolling {num_dice} {'die' if num_dice == 1 else 'dice'}... {dice_results_str}"
-
-    # Reply with the result message
     await reply(res, update, context, botData)
 
 
@@ -123,6 +132,8 @@ def register_handlers(application):
 
     roll_handler = CommandHandler("roll", roll_command)
     application.add_handler(roll_handler)
+
+    application.add_handler(CallbackQueryHandler(button_callback))
 
     application.add_error_handler(error_handler)
 
