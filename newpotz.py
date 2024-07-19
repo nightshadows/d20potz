@@ -38,8 +38,9 @@ async def tg_bot_main(application, event):
         )
 
 
-def parse_update(update: Update) -> BotData:
+async def parse_update(update: Update) -> BotData:
     botData = BotData(update)
+    await botData.throttle()
     return botData
 
 
@@ -51,11 +52,12 @@ async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, b
     )
 
     if message:
-        logger.info("Storing inline message id %s", message.message_id)
         await botData.set_inline_message_id(message.message_id, context)
 
+    botData.save2()
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = parse_update(update)
+    botData = await parse_update(update)
 
     help_text = get_client_help_message()
 
@@ -63,7 +65,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = parse_update(update)
+    botData = await parse_update(update)
 
     start_text = "Welcome to the bot, potz!"
 
@@ -72,14 +74,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def roll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Parse update to get bot data
-    botData = parse_update(update)
+    botData = await parse_update(update)
 
     res = await botData.process("roll", context)
     return await reply(res, update, context, botData)
 
 
 async def add_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = parse_update(update)
+    botData = await parse_update(update)
 
     res = botData.add_hero(context)
 
@@ -87,7 +89,7 @@ async def add_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def remove_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = parse_update(update)
+    botData = await parse_update(update)
 
     res = botData.remove_hero(context)
 
@@ -95,7 +97,7 @@ async def remove_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = parse_update(update)
+    botData = await parse_update(update)
 
     res = ""
 
@@ -103,16 +105,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if botData.params:
         res = await botData.process(botData.params[0], context)
 
-    # remove the inline keyboard
-    try:
-        await context.bot.edit_message_reply_markup(
-            chat_id=update.effective_chat.id,
-            message_id=update.callback_query.message.message_id,
-        )
-    except BadRequest:
-        pass # this will happen if we are cleaning up already deleted messages
-
     await reply(res, update, context, botData)
+
+
+async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    botData = await parse_update(update)
+
+    res = f"This bot does not store or process any Personal data. The only data stored is the fictional data you provide for the game, it is tied to the telegram chat ID and is stored in the database."
+
+    return await reply(res, update, context, botData)
 
 
 # error handler, logs the error and sends the message to the chat if debug mode is enabled
@@ -154,6 +155,9 @@ def register_handlers(application):
 
     remove_hero_handler = CommandHandler("remove_hero", remove_hero_command)
     application.add_handler(remove_hero_handler)
+
+    privacy_handler = CommandHandler("privacy", privacy_command)
+    application.add_handler(privacy_handler)
 
     application.add_handler(CallbackQueryHandler(button_callback))
 

@@ -1,6 +1,8 @@
 """
 """
 
+import asyncio
+import time
 import boto3
 from botocore.exceptions import ClientError
 import logging
@@ -58,60 +60,68 @@ class BotData:
             self.params = update.callback_query.data.split() if update.callback_query.data else []
 
         self.chat_id = update.effective_chat.id
-        self.sync()
-        logger.info(f"BotData: {self}")
-
-    def sync(self):
         self.load_state()
-        self.load_inline_message_id()
-        self.load_heroes()
+
+    async def throttle(self):
+        if self.last_call == 0:
+            return
+
+        current_time = time.time_ns() // 1_000
+        # throttle to 10 calls per second for the same chat
+        time_since_last_call = current_time - self.last_call
+
+        if time_since_last_call < 100_000:
+            time_since_last_call_seconds = time_since_last_call / 1_000_000.0
+            time_to_wait = 0.1 - time_since_last_call_seconds
+            logger.info("Throttling for %s seconds", time_to_wait)
+            await asyncio.sleep(time_to_wait)
+
+    def set_default_state(self):
+        self.state_machine = PotzStateMachine(PotzState.root)
+        self.inline_message_id = None
+        self.heroes = []
+        self.last_call = 0
 
     def load_state(self):
         try:
             response = potztable.get_item(Key={'chat_id': str(self.chat_id)})
-            if 'Item' in response and 'state' in response['Item']:
-                state = PotzState[response['Item']['state']]
-            else:
-                state = PotzState.root
-            self.state_machine = PotzStateMachine(state)
-        except (ClientError, ValueError):
-            logger.error("Error loading state", exc_info=True)
-            self.state_machine = PotzStateMachine(PotzState.root)
+            if not 'Item' in response:
+                self.set_default_state()
+                return
 
-    def load_inline_message_id(self):
-        try:
-            response = potztable.get_item(Key={'chat_id': str(self.chat_id)})
-            if 'Item' in response and 'inline_message_id' in response['Item']:
-                self.inline_message_id = response['Item'].get('inline_message_id')
+            if 'state' in response['Item']:
+                state = PotzState[response['Item']['state']]
+                self.state_machine = PotzStateMachine(state)
+
+            if 'inline_message_id' in response['Item']:
+                self.inline_message_id = response['Item']['inline_message_id']
                 if not self.inline_message_id is None:
                     self.inline_message_id = int(self.inline_message_id)
-            else:
-                self.inline_message_id = None
-        except ClientError:
-            logger.error("Error loading inline message id", exc_info=True)
-            self.inline_message_id = None
 
-    def load_heroes(self):
-        try:
-            response = potztable.get_item(Key={'chat_id': str(self.chat_id)})
-            if 'Item' in response and 'heroes' in response['Item']:
+            if 'heroes' in response['Item']:
                 self.heroes = [PotzHero(h['name'], h['stress'], h['harm']) for h in response['Item']['heroes']]
-            else:
-                self.heroes = []
-        except ClientError:
-            logger.error("Error loading heroes", exc_info=True)
-            self.heroes = []
 
-    def save(self):
+            if 'last_call' in response['Item']:
+                self.last_call = int(response['Item']['last_call'])
+
+        except (ClientError, ValueError):
+            logger.error("Error loading state", exc_info=True)
+            self.set_default_state()
+
+    def save2(self):
         try:
             potztable.put_item(Item={
                 'chat_id': str(self.chat_id),
                 'state': self.state_machine.get_state().name,
                 'inline_message_id': self.inline_message_id,
                 'heroes': [{'name': h.name, 'stress': h.stress, 'harm': h.harm} for h in self.heroes],
+                'last_call': time.time_ns() // 1_000,
             })
         except ClientError:
             logger.error("Error saving state", exc_info=True)
+
+    def save(self):
+        pass
 
     def add_hero(self, context: ContextTypes.DEFAULT_TYPE) -> str:
         if len(self.params) < 2 or len(self.params) > 4:
@@ -153,7 +163,6 @@ class BotData:
         self.save()
 
     async def cleanup_inline_message(self, context: ContextTypes.DEFAULT_TYPE):
-        logger.info("Cleaning up inline message %s for chat %s", self.inline_message_id, self.chat_id)
         if self.inline_message_id is not None:
             try:
                 message_id = self.inline_message_id
@@ -194,6 +203,8 @@ class BotData:
     async def process_hero(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
         callback_parts = callback.split("_")
         if len(callback_parts) != 3:
+            if len(callback_parts) == 2:
+                return f"Press +/- to modify {callback_parts[1]}'s {callback_parts[0]}"
             return "Invalid hero callback"
 
         hero_name = callback_parts[2]
@@ -223,8 +234,6 @@ class BotData:
 
     async def process(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
         try:
-            logger.info(f"Processing callback {callback}")
-
             await self.cleanup_inline_message(context)
 
             if callback in [item.value for item in PotzState]:

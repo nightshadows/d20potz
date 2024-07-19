@@ -22,7 +22,16 @@ def get_client_help_message() -> str:
     help_text = f"""
 What can this bot do?
 
-1. {TEXT_HELP} - Show this help message
-2. {TEXT_ROLL} [num_dice] - Roll a few d6 dice (between 1 and {MAX_DICE}, default is 1)
+1. /add_hero <hero> [stress] [harm] - Add a hero to the list with optional starting stress and harm (default = 0)
+2. /add_timer <timer> <start_value> - Add timer with a starting value
+3. /help - Show help message
+4. /privacy - Show the privacy disclaimer
+5. /remove_hero <hero> - Remove a hero from the list
+6. /roll - invoke Roll inline keyboard
+
+Using the inline keyboard you can:
+- Roll dice
+- Add or remove stress or harm from a hero
+- Advance or remove timers
 """.strip()
     return help_text
