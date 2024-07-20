@@ -43,9 +43,9 @@ async def parse_update(update: Update) -> BotData:
 
 async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, botData: BotData):
     try:
-        if len(text) < 50:
+        if len(text) < 60:
             # append text with whitespace to 50 chars:
-            text += " " * (50 - len(text))
+            text += " " * (59 - len(text))
             text += '.'
 
         message = await context.bot.send_message(

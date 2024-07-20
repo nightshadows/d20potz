@@ -150,8 +150,14 @@ class BotData:
         if '_' in hero:
             return "Hero name cannot contain underscores"
 
-        stress = int(self.params[2]) if len(self.params) > 2 else 0
-        harm = int(self.params[3]) if len(self.params) > 3 else 0
+        try:
+            stress = int(self.params[2]) if len(self.params) > 2 else 0
+            harm = int(self.params[3]) if len(self.params) > 3 else 0
+        except ValueError:
+            return "Stress and harm should be integers greater than or equal to 0"
+
+        if stress < 0 or harm < 0:
+            return "Stress and harm should be greater than or equal to 0"
 
         if hero in [h.name for h in self.heroes]:
             return "Hero already exists"
@@ -188,6 +194,9 @@ class BotData:
             start_value = int(self.params[2])
         except ValueError:
             return "Invalid start value, should be an integer"
+
+        if start_value <= 0:
+            return "Start value should be greater than 0"
 
         if timer in [t.name for t in self.timers]:
             return "Timer already exists"
