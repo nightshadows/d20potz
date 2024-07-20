@@ -12,12 +12,14 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 
+from telegram.error import BadRequest
+
 from telegram.ext import (
     ContextTypes,
 )
 
 from d20potz_state_machine import PotzState, PotzStateMachine
-from shared import setup_logging
+from shared import setup_logging, throttle_telegram
 from dataclasses import dataclass, field
 
 
@@ -44,8 +46,9 @@ class BotData:
     user_id: int
     user_name: str
     chat_id: int
+    chat_type: str
     params : list[str] = field(default_factory=list)
-
+    last_calls: list[int] = field(default_factory=list)
 
     def __init__(self, update):
         if not (message := update.message):
@@ -60,27 +63,18 @@ class BotData:
             self.params = update.callback_query.data.split() if update.callback_query.data else []
 
         self.chat_id = update.effective_chat.id
+        self.chat_type = update.effective_chat.type
         self.load_state()
 
-    async def throttle(self):
-        if self.last_call == 0:
-            return
-
-        current_time = time.time_ns() // 1_000
-        # throttle to 10 calls per second for the same chat
-        time_since_last_call = current_time - self.last_call
-
-        if time_since_last_call < 100_000:
-            time_since_last_call_seconds = time_since_last_call / 1_000_000.0
-            time_to_wait = 0.1 - time_since_last_call_seconds
-            logger.info("Throttling for %s seconds", time_to_wait)
-            await asyncio.sleep(time_to_wait)
+    async def throttle(self) -> None:
+        # this coroutine modifies the list of last_calls and potentially awaits
+        await throttle_telegram(self.last_calls, self.chat_type)
 
     def set_default_state(self):
         self.state_machine = PotzStateMachine(PotzState.root)
         self.inline_message_id = None
         self.heroes = []
-        self.last_call = 0
+        self.last_calls = []
 
     def load_state(self):
         try:
@@ -92,17 +86,25 @@ class BotData:
             if 'state' in response['Item']:
                 state = PotzState[response['Item']['state']]
                 self.state_machine = PotzStateMachine(state)
+            else :
+                self.state_machine = PotzStateMachine(PotzState.root)
 
             if 'inline_message_id' in response['Item']:
                 self.inline_message_id = response['Item']['inline_message_id']
                 if not self.inline_message_id is None:
                     self.inline_message_id = int(self.inline_message_id)
+            else:
+                self.inline_message_id = None
 
             if 'heroes' in response['Item']:
                 self.heroes = [PotzHero(h['name'], h['stress'], h['harm']) for h in response['Item']['heroes']]
+            else:
+                self.heroes = []
 
-            if 'last_call' in response['Item']:
-                self.last_call = int(response['Item']['last_call'])
+            if 'last_calls' in response['Item']:
+                self.last_calls = [int(lc) for lc in response['Item']['last_calls']]
+            else:
+                self.last_calls = []
 
         except (ClientError, ValueError):
             logger.error("Error loading state", exc_info=True)
@@ -115,7 +117,7 @@ class BotData:
                 'state': self.state_machine.get_state().name,
                 'inline_message_id': self.inline_message_id,
                 'heroes': [{'name': h.name, 'stress': h.stress, 'harm': h.harm} for h in self.heroes],
-                'last_call': time.time_ns() // 1_000,
+                'last_calls': self.last_calls,
             })
         except ClientError:
             logger.error("Error saving state", exc_info=True)
@@ -171,6 +173,9 @@ class BotData:
                     chat_id=str(self.chat_id),
                     message_id=int(message_id),
                 )
+            except BadRequest:
+                # this is fine, the message was already deleted
+                pass
             except Exception:
                 logger.error("Failed to remove the previous inline keyboard", exc_info=True)
 

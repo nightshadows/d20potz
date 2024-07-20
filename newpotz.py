@@ -5,25 +5,22 @@ import os
 import traceback
 
 from telegram import (
-    Chat,
     Update,
 )
 
-from telegram.error import BadRequest
+from telegram.error import RetryAfter
 
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
-    filters,
-    MessageHandler,
     CallbackQueryHandler,
 )
 
 from botdata import BotData
 from d20potz_state_machine import PotzState
 from utils import get_client_help_message, MAX_DICE
-from shared import setup_logging
+from shared import setup_logging, PotzRateLimitException
 
 logger = setup_logging(logging.INFO, __name__)
 
@@ -45,11 +42,15 @@ async def parse_update(update: Update) -> BotData:
 
 
 async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, botData: BotData):
-    message = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text,
-        reply_markup=botData.get_inline_keyboard(),
-    )
+    try:
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=botData.get_inline_keyboard(),
+        )
+    except RetryAfter:
+        logger.error("Rate limited by telegram, exiting without saving", exc_info=True)
+        return
 
     if message:
         await botData.set_inline_message_id(message.message_id, context)
@@ -57,7 +58,7 @@ async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, b
     botData.save2()
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = await parse_update(update)
+    botData = await parse_update(update, context)
 
     help_text = get_client_help_message()
 
@@ -118,6 +119,10 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # error handler, logs the error and sends the message to the chat if debug mode is enabled
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if type(context.error) == PotzRateLimitException:
+        # ignore rate limit exceptions, they are valid and already logged as warnings
+        return
+
     import html
 
     from telegram.constants import ParseMode
