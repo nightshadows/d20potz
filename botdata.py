@@ -42,6 +42,16 @@ class PotzHero:
 
 
 @dataclass
+class PotzTimer:
+    name: str
+    value: int
+
+    def __init__(self, name: str, value: int = 0):
+        self.name = name
+        self.value = value
+
+
+@dataclass
 class BotData:
     user_id: int
     user_name: str
@@ -74,6 +84,7 @@ class BotData:
         self.state_machine = PotzStateMachine(PotzState.root)
         self.inline_message_id = None
         self.heroes = []
+        self.timers = []
         self.last_calls = []
 
     def load_state(self):
@@ -101,6 +112,11 @@ class BotData:
             else:
                 self.heroes = []
 
+            if 'timers' in response['Item']:
+                self.timers = [PotzTimer(t['name'], t['value']) for t in response['Item']['timers']]
+            else:
+                self.timers = []
+
             if 'last_calls' in response['Item']:
                 self.last_calls = [int(lc) for lc in response['Item']['last_calls']]
             else:
@@ -118,6 +134,7 @@ class BotData:
                 'inline_message_id': self.inline_message_id,
                 'heroes': [{'name': h.name, 'stress': h.stress, 'harm': h.harm} for h in self.heroes],
                 'last_calls': self.last_calls,
+                'timers': [{'name': t.name, 'value': t.value} for t in self.timers],
             })
         except ClientError:
             logger.error("Error saving state", exc_info=True)
@@ -130,6 +147,9 @@ class BotData:
             return "Usage: /add_hero <hero> [stress] [harm]"
 
         hero = self.params[1]
+        if '_' in hero:
+            return "Hero name cannot contain underscores"
+
         stress = int(self.params[2]) if len(self.params) > 2 else 0
         harm = int(self.params[3]) if len(self.params) > 3 else 0
 
@@ -155,6 +175,27 @@ class BotData:
 
         self.save()
         return f"Removed hero {hero}"
+
+    def add_timer(self, context: ContextTypes.DEFAULT_TYPE) -> str:
+        if len(self.params) != 3:
+            return "Usage: /add_timer <timer> <start_value>"
+
+        timer = self.params[1]
+        if '_' in timer:
+            return "Timer name cannot contain underscores"
+
+        try:
+            start_value = int(self.params[2])
+        except ValueError:
+            return "Invalid start value, should be an integer"
+
+        if timer in [t.name for t in self.timers]:
+            return "Timer already exists"
+
+        self.timers.append(PotzTimer(timer, start_value))
+        self.save()
+
+        return f"Added timer {timer} with start value {start_value}"
 
     async def set_inline_message_id(self, inline_message_id, context: ContextTypes.DEFAULT_TYPE):
         if inline_message_id == self.inline_message_id:
@@ -237,6 +278,35 @@ class BotData:
 
         return self.get_default_header()
 
+    async def process_timer(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
+        callback_parts = callback.split("_")
+        if len(callback_parts) != 3:
+            if len(callback_parts) == 2:
+                return f"Press - to decrease timer {callback_parts[1]}"
+            return "Invalid timer callback"
+
+        timer_name = callback_parts[2]
+        timer_op = callback_parts[1]
+
+        if timer_op not in ["minus", "remove"]:
+            return "Invalid operation"
+
+        timer = next((t for t in self.timers if t.name == timer_name), None)
+        if timer is None:
+            return "Timer not found"
+
+        if timer_op == "remove":
+            self.timers = [t for t in self.timers if t.name != timer_name]
+            self.save()
+            return f"Removed timer {timer_name}"
+
+        timer.value -= 1
+        self.save()
+        if timer.value == 0:
+            return f"Timer {timer_name} expired"
+
+        return f"Timer {timer_name} decreased to {timer.value}"
+
     async def process(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
         try:
             await self.cleanup_inline_message(context)
@@ -250,7 +320,7 @@ class BotData:
             elif state in (PotzState.stress, PotzState.harm):
                 return await self.process_hero(callback, context)
             elif state == PotzState.timer:
-                pass
+                return await self.process_timer(callback, context)
             elif state == PotzState.roll:
                 logger.info(f"Roll callback: {callback}")
                 if not callback.startswith("roll"):
@@ -277,6 +347,18 @@ class BotData:
         keyboard.append([InlineKeyboardButton("Back", callback_data=PotzState.root.name)])
         return keyboard
 
+    def build_timer_keyboard(self):
+        keyboard = []
+        for timer in self.timers:
+            line = []
+            line.append(InlineKeyboardButton(f"{timer.name}", callback_data=f"timer_{timer.name}"))
+            if timer.value > 0:
+                line.append(InlineKeyboardButton(f"{timer.value} -> {timer.value - 1}", callback_data=f"timer_minus_{timer.name}"))
+            line.append(InlineKeyboardButton("Remove", callback_data=f"timer_remove_{timer.name}"))
+            keyboard.append(line)
+        keyboard.append([InlineKeyboardButton("Back", callback_data=PotzState.root.name)])
+        return keyboard
+
     def get_inline_keyboard(self):
         state = self.state_machine.get_state()
         keyboard = []
@@ -291,7 +373,7 @@ class BotData:
         elif state == PotzState.harm:
             keyboard = self.build_hero_keyboard("harm")
         elif state == PotzState.timer:
-            keyboard = [[InlineKeyboardButton("Back", callback_data=PotzState.root.name)]]
+            keyboard = self.build_timer_keyboard()
         elif state == PotzState.roll:
             keyboard = [
                 [InlineKeyboardButton("1d6", callback_data="roll1"), InlineKeyboardButton("2d6", callback_data="roll2"), InlineKeyboardButton("3d6", callback_data="roll3")],

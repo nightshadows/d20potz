@@ -12,9 +12,6 @@ MAX_DICE = 5
 logger = setup_logging(logging.INFO, __name__)
 
 
-from texts import TEXT_HELP, TEXT_ROLL
-
-
 def get_client_help_message() -> str:
     """
     Returns the help message for the client

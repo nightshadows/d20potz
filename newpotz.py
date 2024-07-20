@@ -43,6 +43,11 @@ async def parse_update(update: Update) -> BotData:
 
 async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, botData: BotData):
     try:
+        if len(text) < 50:
+            # append text with whitespace to 50 chars:
+            text += " " * (50 - len(text))
+            text += '.'
+
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -93,6 +98,14 @@ async def remove_hero_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     botData = await parse_update(update)
 
     res = botData.remove_hero(context)
+
+    return await reply(res, update, context, botData)
+
+
+async def add_timer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    botData = await parse_update(update)
+
+    res = botData.add_timer(context)
 
     return await reply(res, update, context, botData)
 
@@ -160,6 +173,9 @@ def register_handlers(application):
 
     remove_hero_handler = CommandHandler("remove_hero", remove_hero_command)
     application.add_handler(remove_hero_handler)
+
+    add_timer_handler = CommandHandler("add_timer", add_timer_command)
+    application.add_handler(add_timer_handler)
 
     privacy_handler = CommandHandler("privacy", privacy_command)
     application.add_handler(privacy_handler)

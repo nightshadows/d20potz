@@ -1,13 +1,9 @@
 # d20potz
 d20 board games helper bot for Telegram
 
-## Configuration
-make a symlink ./shared -> potz-shared library
-
-## everything below is deprecated
-
 ## How to run
-**$** *pip3 install python-telegram-bot --upgrade --pre*
-**$** *pip3 install leveldb*
-**$** *touch d20potz.cfg* # and fill [bot] section with parameters: **db\_dir** and **telegram\_token**
-**$** *python3 d20potz.py*
+**$** pull/symlink https://github.com/nightshadows/potz-shared into ./shared
+**$** ./build_zip.sh
+**$** upload d20potz.zip to AWS lambda
+**$** you will need a lambda layer containing boto3 and python-telegram-bot
+**$** put your telegram bot token into TELEGRAM_TOKEN env variable in lambda
