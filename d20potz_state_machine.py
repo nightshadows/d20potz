@@ -4,8 +4,10 @@ This module contains the state machine for the D20 Potz project.
 
 import logging
 from enum import Enum
-from shared import setup_logging
-from state_machine import StateMachine
+from shared import (
+    setup_logging,
+    StateMachine,
+)
 
 logger = setup_logging(logging.INFO, __name__)
 

@@ -6,9 +6,6 @@ import logging
 from shared import setup_logging
 
 
-MAX_DICE = 5
-
-
 logger = setup_logging(logging.INFO, __name__)
 
 
@@ -16,7 +13,7 @@ def get_client_help_message() -> str:
     """
     Returns the help message for the client
     """
-    help_text = f"""
+    help_text = """
 What can this bot do?
 
 1. /add_hero <hero> [stress] [harm] - Add a hero to the list with optional starting stress and harm (default = 0)

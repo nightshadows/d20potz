@@ -1,8 +1,6 @@
 """
 """
 
-import asyncio
-import time
 import boto3
 from botocore.exceptions import ClientError
 import logging
@@ -61,6 +59,12 @@ class BotData:
     last_calls: list[int] = field(default_factory=list)
 
     def __init__(self, update):
+        self.inline_message_id = None
+        self.heroes = []
+        self.timers = []
+        self.last_calls = []
+        self.state_machine = None
+
         if not (message := update.message):
             message = update.edited_message
         if message:
@@ -82,10 +86,6 @@ class BotData:
 
     def set_default_state(self):
         self.state_machine = PotzStateMachine(PotzState.root)
-        self.inline_message_id = None
-        self.heroes = []
-        self.timers = []
-        self.last_calls = []
 
     def load_state(self):
         try:
@@ -104,23 +104,15 @@ class BotData:
                 self.inline_message_id = response['Item']['inline_message_id']
                 if not self.inline_message_id is None:
                     self.inline_message_id = int(self.inline_message_id)
-            else:
-                self.inline_message_id = None
 
             if 'heroes' in response['Item']:
                 self.heroes = [PotzHero(h['name'], h['stress'], h['harm']) for h in response['Item']['heroes']]
-            else:
-                self.heroes = []
 
             if 'timers' in response['Item']:
                 self.timers = [PotzTimer(t['name'], t['value']) for t in response['Item']['timers']]
-            else:
-                self.timers = []
 
             if 'last_calls' in response['Item']:
                 self.last_calls = [int(lc) for lc in response['Item']['last_calls']]
-            else:
-                self.last_calls = []
 
         except (ClientError, ValueError):
             logger.error("Error loading state", exc_info=True)
@@ -138,9 +130,6 @@ class BotData:
             })
         except ClientError:
             logger.error("Error saving state", exc_info=True)
-
-    def save(self):
-        pass
 
     def add_hero(self, context: ContextTypes.DEFAULT_TYPE) -> str:
         if len(self.params) < 2 or len(self.params) > 4:
@@ -163,13 +152,11 @@ class BotData:
             return "Hero already exists"
 
         self.heroes.append(PotzHero(hero, stress, harm))
-        self.save()
-
         self.process("root", context)
 
         return f"Added hero {hero}"
 
-    def remove_hero(self, context: ContextTypes.DEFAULT_TYPE) -> str:
+    def remove_hero(self, _context: ContextTypes.DEFAULT_TYPE) -> str:
         if len(self.params) != 2:
             return "Usage: /remove_hero <hero>"
 
@@ -179,10 +166,9 @@ class BotData:
         if len(self.heroes) == heroes_before:
             return f"Hero {hero} not found"
 
-        self.save()
         return f"Removed hero {hero}"
 
-    def add_timer(self, context: ContextTypes.DEFAULT_TYPE) -> str:
+    def add_timer(self, _context: ContextTypes.DEFAULT_TYPE) -> str:
         if len(self.params) != 3:
             return "Usage: /add_timer <timer> <start_value>"
 
@@ -202,7 +188,6 @@ class BotData:
             return "Timer already exists"
 
         self.timers.append(PotzTimer(timer, start_value))
-        self.save()
 
         return f"Added timer {timer} with start value {start_value}"
 
@@ -212,7 +197,6 @@ class BotData:
 
         await self.cleanup_inline_message(context)
         self.inline_message_id = inline_message_id
-        self.save()
 
     async def cleanup_inline_message(self, context: ContextTypes.DEFAULT_TYPE):
         if self.inline_message_id is not None:
@@ -235,9 +219,8 @@ class BotData:
     def transition(self, to_state):
         if self.state_machine.can_transition(to_state):
             self.state_machine.transition(to_state)
-            self.save()
         else:
-            logger.error(f"Cannot transition from {self.state_machine.get_state()} to {to_state}")
+            logger.error("Cannot transition from %s to %s", self.state_machine.get_state(), to_state)
         return self.get_default_header()
 
     async def process_roll(self, dice_count: int, context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -255,7 +238,7 @@ class BotData:
 
         return self.transition(PotzState.root)
 
-    async def process_hero(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
+    async def process_hero(self, callback: str, _context: ContextTypes.DEFAULT_TYPE) -> str:
         callback_parts = callback.split("_")
         if len(callback_parts) != 3:
             if len(callback_parts) == 2:
@@ -283,11 +266,10 @@ class BotData:
             value -= 1
 
         setattr(hero, hero_field, value)
-        self.save()
 
         return self.get_default_header()
 
-    async def process_timer(self, callback: str, context: ContextTypes.DEFAULT_TYPE) -> str:
+    async def process_timer(self, callback: str, _context: ContextTypes.DEFAULT_TYPE) -> str:
         callback_parts = callback.split("_")
         if len(callback_parts) != 3:
             if len(callback_parts) == 2:
@@ -306,11 +288,9 @@ class BotData:
 
         if timer_op == "remove":
             self.timers = [t for t in self.timers if t.name != timer_name]
-            self.save()
             return f"Removed timer {timer_name}"
 
         timer.value -= 1
-        self.save()
         if timer.value == 0:
             return f"Timer {timer_name} expired"
 
@@ -331,12 +311,12 @@ class BotData:
             elif state == PotzState.timer:
                 return await self.process_timer(callback, context)
             elif state == PotzState.roll:
-                logger.info(f"Roll callback: {callback}")
+                logger.info("Roll callback: %s", callback)
                 if not callback.startswith("roll"):
                     pass
                 else:
                     dice_count = int(callback[4])
-                    logger.info(f"Rolling {dice_count} dice")
+                    logger.info("Rolling %s dice", dice_count)
                     return await self.process_roll(dice_count, context)
         except Exception:
             logger.error("Error processing callback", exc_info=True)

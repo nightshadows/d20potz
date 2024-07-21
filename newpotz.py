@@ -18,8 +18,7 @@ from telegram.ext import (
 )
 
 from botdata import BotData
-from d20potz_state_machine import PotzState
-from utils import get_client_help_message, MAX_DICE
+from utils import get_client_help_message
 from shared import setup_logging, PotzRateLimitException
 
 logger = setup_logging(logging.INFO, __name__)
@@ -63,7 +62,7 @@ async def reply(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, b
     botData.save2()
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    botData = await parse_update(update, context)
+    botData = await parse_update(update)
 
     help_text = get_client_help_message()
 
@@ -125,8 +124,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     botData = await parse_update(update)
 
-    res = f"This bot does not store or process any Personal data. The only data stored is the fictional data you provide for the game, it is tied to the telegram chat ID and is stored in the database."
-
+    res = """
+This bot does not store or process any Personal data.
+The only data stored is the fictional data you provide for the game,
+it is tied to the telegram chat ID and is stored in the database."
+"""
     return await reply(res, update, context, botData)
 
 
@@ -137,8 +139,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     import html
-
-    from telegram.constants import ParseMode
 
     tb_list = traceback.format_exception(
         None, context.error, context.error.__traceback__
